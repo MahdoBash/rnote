@@ -87,6 +87,8 @@ jobs:
           $installation = Join-Path $env:RUNNER_TEMP "RnoteSmoke"
           $setup = Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installation" -Wait -PassThru
           if ($setup.ExitCode -ne 0) { throw "Installer failed: $($setup.ExitCode)" }
+          # Hosted runners have no supported GPU; exercise startup with Cairo.
+          $env:GSK_RENDERER = "cairo"
           $app = Start-Process "$installation/bin/rnote.exe" -PassThru -RedirectStandardError "$env:RUNNER_TEMP/rnote-stderr.txt"
           Start-Sleep -Seconds 15
           $app.Refresh()
