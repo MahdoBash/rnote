@@ -81,6 +81,13 @@ mod imp {
             let old_viewport = self.old_viewport.get();
             let new_viewport = canvas.engine_ref().camera.viewport();
 
+            if let Some(wrapper) = canvas
+                .ancestor(crate::RnCanvasWrapper::static_type())
+                .and_downcast::<crate::RnCanvasWrapper>()
+            {
+                wrapper.update_page_indicator();
+            }
+
             // We only extend the viewport by a (tweakable) fraction of the margin, because we want to trigger rendering
             // before we reach it. This has two advantages: Strokes that might take longer to render have a head start
             // while still being out of view, and the rendering gets triggered more often, so not that many strokes

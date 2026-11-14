@@ -1,5 +1,8 @@
+mod pageposition;
+
 // Imports
 use crate::{RnAppWindow, RnCanvas, RnContextMenu, canvas::reject_pointer_input};
+use gettextrs::gettext;
 use gtk4::{
     CompositeTemplate, CornerType, EventControllerMotion, EventControllerScroll,
     EventControllerScrollFlags, EventSequenceState, GestureClick, GestureDrag, GestureLongPress,
@@ -35,6 +38,8 @@ mod imp {
         pub(crate) block_pinch_zoom: Cell<bool>,
         pub(crate) inertial_scrolling: Cell<bool>,
         pub(crate) pointer_pos: Cell<Option<Vector2>>,
+        pub(crate) page_indicator_timeout: RefCell<Option<glib::SourceId>>,
+        pub(crate) previous_view_center_y: Cell<Option<f64>>,
         pub(crate) last_contextmenu_pos: Cell<Option<Vector2>>,
 
         pub(crate) pointer_motion_controller: EventControllerMotion,
@@ -50,6 +55,10 @@ mod imp {
 
         #[template_child]
         pub(crate) scroller: TemplateChild<ScrolledWindow>,
+        #[template_child]
+        pub(crate) page_indicator: TemplateChild<gtk4::Revealer>,
+        #[template_child]
+        pub(crate) page_indicator_label: TemplateChild<gtk4::Label>,
         #[template_child]
         pub(crate) canvas: TemplateChild<RnCanvas>,
         #[template_child]
@@ -129,6 +138,10 @@ mod imp {
 
             Self {
                 connections: RefCell::new(Connections::default()),
+                page_indicator_timeout: RefCell::new(None),
+                previous_view_center_y: Cell::new(None),
+                page_indicator: TemplateChild::default(),
+                page_indicator_label: TemplateChild::default(),
                 canvas_touch_drawing_handler: RefCell::new(None),
                 show_scrollbars: Cell::new(false),
                 block_pinch_zoom: Cell::new(false),
@@ -220,6 +233,9 @@ mod imp {
         }
 
         fn dispose(&self) {
+            if let Some(timeout) = self.page_indicator_timeout.take() {
+                timeout.remove();
+            }
             self.obj().disconnect_connections();
 
             if let Some(handler) = self.canvas_touch_drawing_handler.take() {
@@ -871,6 +887,69 @@ impl Default for RnCanvasWrapper {
 }
 
 impl RnCanvasWrapper {
+    /// Called after allocation, once scrolling, zoom and document geometry agree.
+    pub(crate) fn update_page_indicator(&self) {
+        let imp = self.imp();
+        let canvas = self.canvas();
+        let engine = canvas.engine_ref();
+        let document = &engine.document;
+        let center_y = engine.camera.viewport_center().y;
+        let position = document
+            .config
+            .layout
+            .is_fixed_width()
+            .then(|| {
+                pageposition::page_position(
+                    center_y,
+                    document.y,
+                    document.height,
+                    document.config.format.height(),
+                )
+            })
+            .flatten();
+        drop(engine);
+
+        let previous = imp.previous_view_center_y.replace(Some(center_y));
+        let Some((current, total)) = position else {
+            imp.previous_view_center_y.set(None);
+            imp.page_indicator.set_reveal_child(false);
+            if let Some(timeout) = imp.page_indicator_timeout.take() {
+                timeout.remove();
+            }
+            return;
+        };
+
+        // Translators: keep the {current} and {total} placeholders.
+        let label = gettext("Page {current} of {total}")
+            .replace("{current}", &current.to_string())
+            .replace("{total}", &total.to_string());
+        if imp.page_indicator_label.label().as_str() != label {
+            imp.page_indicator_label.set_label(&label);
+        }
+
+        // Avoid showing the badge on first allocation or restarting the timer
+        // for allocations caused by the badge's own fade animation.
+        if !previous.is_some_and(|old| (old - center_y).abs() > 0.01) {
+            return;
+        }
+        imp.page_indicator.set_reveal_child(true);
+        if let Some(timeout) = imp.page_indicator_timeout.take() {
+            timeout.remove();
+        }
+        let timeout = glib::timeout_add_local_once(
+            std::time::Duration::from_millis(1500),
+            clone!(
+                #[weak(rename_to = wrapper)]
+                self,
+                move || {
+                    wrapper.imp().page_indicator_timeout.take();
+                    wrapper.imp().page_indicator.set_reveal_child(false);
+                }
+            ),
+        );
+        imp.page_indicator_timeout.replace(Some(timeout));
+    }
+
     pub(crate) fn new() -> Self {
         glib::Object::new()
     }
