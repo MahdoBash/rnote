@@ -70,6 +70,17 @@ impl RnAppWindow {
             .get_no_changes()
             .build();
 
+        app_settings
+            .bind(
+                "page-indicator-corner",
+                &self
+                    .sidebar()
+                    .settings_panel()
+                    .general_page_indicator_corner_row(),
+                "selected",
+            )
+            .build();
+
         // show scrollbars
         app_settings
             .bind(

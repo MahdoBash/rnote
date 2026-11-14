@@ -54,6 +54,22 @@
                       </object>
                     </child>
                     <child>
+                      <object class="AdwComboRow" id="general_page_indicator_corner_row">
+                        <property name="title" translatable="yes">Page Indicator Position</property>
+                        <property name="subtitle" translatable="yes">Choose a corner for page navigation</property>
+                        <property name="model">
+                          <object class="GtkStringList">
+                            <items>
+                              <item translatable="yes">Top Right</item>
+                              <item translatable="yes">Top Left</item>
+                              <item translatable="yes">Bottom Right</item>
+                              <item translatable="yes">Bottom Left</item>
+                            </items>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwSwitchRow" id="general_show_scrollbars_row">
                         <property name="title" translatable="yes">Show Scrollbars</property>
                         <property name="subtitle" translatable="yes">Set whether the scrollbars on the canvas are shown</property>

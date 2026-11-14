@@ -19,6 +19,12 @@ mod imp {
     #[template(resource = "/com/github/flxzt/rnote/ui/penssidebar/brushpage.ui")]
     pub(crate) struct RnBrushPage {
         #[template_child]
+        pub(crate) brushstyle_menubutton: TemplateChild<MenuButton>,
+        #[template_child]
+        pub(crate) brushstyle_popover: TemplateChild<Popover>,
+        #[template_child]
+        pub(crate) brushstyle_close_button: TemplateChild<Button>,
+        #[template_child]
         pub(crate) brushstyle_solid_toggle: TemplateChild<ToggleButton>,
         #[template_child]
         pub(crate) brushstyle_marker_toggle: TemplateChild<ToggleButton>,
@@ -66,6 +72,32 @@ mod imp {
     impl ObjectImpl for RnBrushPage {
         fn constructed(&self) {
             self.parent_constructed();
+            let obj = self.obj();
+            self.brushconfig_menubutton
+                .bind_property("direction", &*self.brushstyle_menubutton, "direction")
+                .sync_create()
+                .build();
+            self.brushstyle_close_button.connect_clicked(clone!(
+                #[weak]
+                obj,
+                move |_| obj.imp().brushstyle_popover.popdown()
+            ));
+            for toggle in [
+                &*self.brushstyle_solid_toggle,
+                &*self.brushstyle_marker_toggle,
+                &*self.brushstyle_textured_toggle,
+            ] {
+                toggle.connect_toggled(clone!(
+                    #[weak]
+                    obj,
+                    move |toggle| {
+                        if toggle.is_active() {
+                            obj.update_brush_style_icon();
+                            obj.imp().brushstyle_popover.popdown();
+                        }
+                    }
+                ));
+            }
         }
 
         fn dispose(&self) {
@@ -98,6 +130,15 @@ impl RnBrushPage {
 
     pub(crate) fn brushconfig_menubutton(&self) -> MenuButton {
         self.imp().brushconfig_menubutton.get()
+    }
+
+    fn update_brush_style_icon(&self) {
+        let icon = match self.brush_style().unwrap_or(BrushStyle::Solid) {
+            BrushStyle::Marker => "pen-brush-style-marker-symbolic",
+            BrushStyle::Solid => "pen-brush-style-solid-symbolic",
+            BrushStyle::Textured => "pen-brush-style-textured-symbolic",
+        };
+        self.imp().brushstyle_menubutton.set_icon_name(icon);
     }
 
     pub(crate) fn brush_style(&self) -> Option<BrushStyle> {

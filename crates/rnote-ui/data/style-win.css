@@ -1,22 +1,4 @@
-.csd {
-    margin: -9px;
-    box-shadow: none;
-    border-radius: 0;
-    border: 1px solid var(--border-color);
-}
-
-popover {
-    margin: 0px;
-    box-shadow: none;
-}
-
-popover contents {
-    margin: -21px -23px -25px -23px;
-    border-radius: 0;
-    border: 1px solid var(--border-color);
-}
-
-popover arrow {
-    background: transparent;
-    border-color: transparent;
-}
+/* Keep libadwaita's native window and popover geometry on Windows.
+ * Negative margins clip the shadow/arrow surfaces and expose black strips.
+ * The shared theme supplies padding, rounded corners and theme-aware shadows.
+ */

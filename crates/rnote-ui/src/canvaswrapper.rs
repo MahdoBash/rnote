@@ -23,6 +23,7 @@ struct Connections {
     appwindow_block_pinch_zoom_bind: Option<glib::Binding>,
     appwindow_show_scrollbars_bind: Option<glib::Binding>,
     appwindow_inertial_scrolling_bind: Option<glib::Binding>,
+    page_indicator_corner_bind: Option<glib::Binding>,
     appwindow_righthanded_bind: Option<glib::Binding>,
 }
 
@@ -38,8 +39,8 @@ mod imp {
         pub(crate) block_pinch_zoom: Cell<bool>,
         pub(crate) inertial_scrolling: Cell<bool>,
         pub(crate) pointer_pos: Cell<Option<Vector2>>,
-        pub(crate) page_indicator_timeout: RefCell<Option<glib::SourceId>>,
-        pub(crate) previous_view_center_y: Cell<Option<f64>>,
+        pub(crate) page_indicator_corner: Cell<u32>,
+        pub(crate) page_position: Cell<Option<(u32, u32)>>,
         pub(crate) last_contextmenu_pos: Cell<Option<Vector2>>,
 
         pub(crate) pointer_motion_controller: EventControllerMotion,
@@ -59,6 +60,14 @@ mod imp {
         pub(crate) page_indicator: TemplateChild<gtk4::Revealer>,
         #[template_child]
         pub(crate) page_indicator_label: TemplateChild<gtk4::Label>,
+        #[template_child]
+        pub(crate) page_indicator_button: TemplateChild<gtk4::MenuButton>,
+        #[template_child]
+        pub(crate) page_indicator_popover: TemplateChild<gtk4::Popover>,
+        #[template_child]
+        pub(crate) page_number_spin: TemplateChild<gtk4::SpinButton>,
+        #[template_child]
+        pub(crate) page_go_button: TemplateChild<gtk4::Button>,
         #[template_child]
         pub(crate) canvas: TemplateChild<RnCanvas>,
         #[template_child]
@@ -138,8 +147,12 @@ mod imp {
 
             Self {
                 connections: RefCell::new(Connections::default()),
-                page_indicator_timeout: RefCell::new(None),
-                previous_view_center_y: Cell::new(None),
+                page_indicator_corner: Cell::new(0),
+                page_position: Cell::new(None),
+                page_indicator_button: TemplateChild::default(),
+                page_indicator_popover: TemplateChild::default(),
+                page_number_spin: TemplateChild::default(),
+                page_go_button: TemplateChild::default(),
                 page_indicator: TemplateChild::default(),
                 page_indicator_label: TemplateChild::default(),
                 canvas_touch_drawing_handler: RefCell::new(None),
@@ -214,6 +227,40 @@ mod imp {
                 .group_with(&self.canvas_zoom_gesture);
 
             self.setup_input();
+            self.page_indicator_popover.connect_show(clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    if let Some((current, total)) = obj.imp().page_position.get() {
+                        let spin = &obj.imp().page_number_spin;
+                        spin.set_range(1.0, f64::from(total));
+                        spin.set_value(f64::from(current));
+                        spin.grab_focus();
+                        spin.select_region(0, -1);
+                    }
+                }
+            ));
+            self.page_go_button.connect_clicked(clone!(
+                #[weak]
+                obj,
+                move |_| obj.jump_to_selected_page()
+            ));
+            let keys = gtk4::EventControllerKey::new();
+            keys.connect_key_pressed(clone!(
+                #[weak]
+                obj,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, key, _, _| {
+                    if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
+                        obj.jump_to_selected_page();
+                        glib::Propagation::Stop
+                    } else {
+                        glib::Propagation::Proceed
+                    }
+                }
+            ));
+            self.page_number_spin.add_controller(keys);
 
             let canvas_touch_drawing_handler = self.canvas.connect_notify_local(
                 Some("touch-drawing"),
@@ -233,9 +280,6 @@ mod imp {
         }
 
         fn dispose(&self) {
-            if let Some(timeout) = self.page_indicator_timeout.take() {
-                timeout.remove();
-            }
             self.obj().disconnect_connections();
 
             if let Some(handler) = self.canvas_touch_drawing_handler.take() {
@@ -255,6 +299,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
                 vec![
+                    glib::ParamSpecUInt::builder("page-indicator-corner")
+                        .minimum(0)
+                        .maximum(3)
+                        .default_value(0)
+                        .build(),
                     glib::ParamSpecBoolean::builder("show-scrollbars")
                         .default_value(false)
                         .build(),
@@ -271,6 +320,7 @@ mod imp {
 
         fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             match pspec.name() {
+                "page-indicator-corner" => self.page_indicator_corner.get().to_value(),
                 "show-scrollbars" => self.show_scrollbars.get().to_value(),
                 "block-pinch-zoom" => self.block_pinch_zoom.get().to_value(),
                 "inertial-scrolling" => self.inertial_scrolling.get().to_value(),
@@ -280,6 +330,25 @@ mod imp {
 
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
+                "page-indicator-corner" => {
+                    let corner = value.get::<u32>().unwrap();
+                    self.page_indicator_corner.set(corner);
+                    self.page_indicator.set_halign(if corner % 2 == 0 {
+                        gtk4::Align::End
+                    } else {
+                        gtk4::Align::Start
+                    });
+                    self.page_indicator.set_valign(if corner < 2 {
+                        gtk4::Align::Start
+                    } else {
+                        gtk4::Align::End
+                    });
+                    self.page_indicator_button.set_direction(if corner < 2 {
+                        gtk4::ArrowType::Down
+                    } else {
+                        gtk4::ArrowType::Up
+                    });
+                }
                 "show-scrollbars" => {
                     let show_scrollbars = value
                         .get::<bool>()
@@ -436,6 +505,19 @@ mod imp {
                     #[weak(rename_to=canvaswrapper)]
                     obj,
                     move |gesture, _, _| {
+                        if !canvaswrapper.canvas().touch_drawing()
+                            && gesture.current_event().is_some_and(|event| {
+                                matches!(
+                                    event.event_type(),
+                                    gdk::EventType::TouchBegin | gdk::EventType::TouchUpdate
+                                ) || event.is_pointer_emulated()
+                            })
+                        {
+                            // Native touch scrolling owns the whole sequence, including inertia.
+                            gesture.set_state(EventSequenceState::Denied);
+                            return;
+                        }
+
                         // We don't claim the sequence, because we we want to allow touch zooming.
                         // When the zoom gesture is recognized, it claims it and denies this touch drag gesture.
 
@@ -909,45 +991,44 @@ impl RnCanvasWrapper {
             .flatten();
         drop(engine);
 
-        let previous = imp.previous_view_center_y.replace(Some(center_y));
+        imp.page_position.set(position);
         let Some((current, total)) = position else {
-            imp.previous_view_center_y.set(None);
+            imp.page_indicator_popover.popdown();
             imp.page_indicator.set_reveal_child(false);
-            if let Some(timeout) = imp.page_indicator_timeout.take() {
-                timeout.remove();
-            }
             return;
         };
-
-        // Translators: keep the {current} and {total} placeholders.
         let label = gettext("Page {current} of {total}")
             .replace("{current}", &current.to_string())
             .replace("{total}", &total.to_string());
         if imp.page_indicator_label.label().as_str() != label {
             imp.page_indicator_label.set_label(&label);
         }
+        imp.page_indicator.set_reveal_child(true);
+    }
 
-        // Avoid showing the badge on first allocation or restarting the timer
-        // for allocations caused by the badge's own fade animation.
-        if !previous.is_some_and(|old| (old - center_y).abs() > 0.01) {
+    fn jump_to_selected_page(&self) {
+        let imp = self.imp();
+        imp.page_number_spin.update();
+        let Some((_, total)) = imp.page_position.get() else {
+            return;
+        };
+        let page = (imp.page_number_spin.value_as_int().max(1) as u32).min(total);
+        let canvas = self.canvas();
+        let engine = canvas.engine_ref();
+        if !engine.document.config.layout.is_fixed_width() {
             return;
         }
-        imp.page_indicator.set_reveal_child(true);
-        if let Some(timeout) = imp.page_indicator_timeout.take() {
-            timeout.remove();
-        }
-        let timeout = glib::timeout_add_local_once(
-            std::time::Duration::from_millis(1500),
-            clone!(
-                #[weak(rename_to = wrapper)]
-                self,
-                move || {
-                    wrapper.imp().page_indicator_timeout.take();
-                    wrapper.imp().page_indicator.set_reveal_child(false);
-                }
-            ),
+        let y = engine.document.y + f64::from(page - 1) * engine.document.config.format.height();
+        let offset = Vector2::new(
+            engine.camera.offset().x,
+            y * engine.camera.total_zoom() - 16.0,
         );
-        imp.page_indicator_timeout.replace(Some(timeout));
+        drop(engine);
+        imp.workaround_cancel_kinetic_scrolling_for_zoom();
+        let flags = canvas.engine_mut().camera_set_offset(offset);
+        canvas.emit_handle_widget_flags(flags);
+        imp.page_indicator_popover.popdown();
+        canvas.grab_focus();
     }
 
     pub(crate) fn new() -> Self {
@@ -1048,7 +1129,18 @@ impl RnCanvasWrapper {
             .sync_create()
             .build();
 
+        let corner_bind = appwindow
+            .sidebar()
+            .settings_panel()
+            .general_page_indicator_corner_row()
+            .bind_property("selected", self, "page-indicator-corner")
+            .sync_create()
+            .build();
         let mut connections = self.imp().connections.borrow_mut();
+        if let Some(old) = connections.page_indicator_corner_bind.replace(corner_bind) {
+            old.unbind();
+        }
+
         if let Some(old) = connections
             .appwindow_block_pinch_zoom_bind
             .replace(appwindow_block_pinch_zoom_bind)
@@ -1083,6 +1175,10 @@ impl RnCanvasWrapper {
         self.canvas().disconnect_connections();
 
         let mut connections = self.imp().connections.borrow_mut();
+        if let Some(old) = connections.page_indicator_corner_bind.take() {
+            old.unbind();
+        }
+
         if let Some(old) = connections.appwindow_block_pinch_zoom_bind.take() {
             old.unbind();
         }

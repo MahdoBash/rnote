@@ -125,6 +125,12 @@
       <default>120</default>
       <summary>the sec interval for the autosave</summary>
     </key>
+    <key name="page-indicator-corner" type="u">
+      <default>0</default>
+      <range min="0" max="3" />
+      <summary>Page indicator corner</summary>
+      <description>0: top right, 1: top left, 2: bottom right, 3: bottom left.</description>
+    </key>
     <key name="show-scrollbars" type="b">
       <default>false</default>
       <summary>Whether the canvas scrollbars are shown</summary>

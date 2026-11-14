@@ -4,7 +4,7 @@ name: Build Windows Installer
 
 "on":
   push:
-    branches: [codex/page-indicator]
+    branches: [codex/page-indicator, codex/page-navigation]
   release:
     types: [published]
   workflow_dispatch:
@@ -79,6 +79,25 @@ jobs:
 
       - name: Build installer
         run: just ci=true build-win-installer
+
+      - name: Smoke test installed application
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path "_mesonbuild/${{ steps.set_installer_name.outputs.name }}.exe"
+          $installation = Join-Path $env:RUNNER_TEMP "RnoteSmoke"
+          $setup = Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installation" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Installer failed: $($setup.ExitCode)" }
+          $app = Start-Process "$installation/bin/rnote.exe" -PassThru -RedirectStandardError "$env:RUNNER_TEMP/rnote-stderr.txt"
+          Start-Sleep -Seconds 15
+          $app.Refresh()
+          if ($app.HasExited) {
+            Get-Content "$env:RUNNER_TEMP/rnote-stderr.txt"
+            throw "Application exited during startup: $($app.ExitCode)"
+          }
+          if ($app.MainWindowHandle -eq 0) { throw "Application did not open a window" }
+          Stop-Process -Id $app.Id
+          $errors = Get-Content "$env:RUNNER_TEMP/rnote-stderr.txt" -Raw
+          if ($errors -match "(CRITICAL|panicked|Failed to build template)") { throw $errors }
 
       - name: Upload installer (workflow artifact)
         uses: actions/upload-artifact@v7
