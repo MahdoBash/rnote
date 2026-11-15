@@ -35,6 +35,8 @@ pub(crate) mod strokewidthpicker;
 pub(crate) mod unitentry;
 pub(crate) mod utils;
 pub(crate) mod workspacebrowser;
+#[cfg(target_os = "windows")]
+pub(crate) mod windows_surfaces;
 
 // Re-exports
 pub(crate) use app::RnApp;

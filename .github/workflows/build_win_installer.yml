@@ -66,6 +66,8 @@ jobs:
         run: |
           rustc --edition 2024 --test build-aux/page-indicator-tests.rs -o page-indicator-tests.exe
           ./page-indicator-tests.exe
+          rustc --edition 2024 --test build-aux/touch-motion-tests.rs -o touch-motion-tests.exe
+          ./touch-motion-tests.exe
 
       - name: Prerequisites
         run: |
@@ -97,6 +99,7 @@ jobs:
             throw "Application exited during startup: $($app.ExitCode)"
           }
           if ($app.MainWindowHandle -eq 0) { throw "Application did not open a window" }
+          ./build-aux/check-window-region.ps1 -WindowHandle $app.MainWindowHandle
           Stop-Process -Id $app.Id
           $errors = Get-Content "$env:RUNNER_TEMP/rnote-stderr.txt" -Raw
           if ($errors -match "(CRITICAL|panicked|Failed to build template)") { throw $errors }

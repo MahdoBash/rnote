@@ -1,4 +1,16 @@
-/* Keep libadwaita's native window and popover geometry on Windows.
- * Negative margins clip the shadow/arrow surfaces and expose black strips.
- * The shared theme supplies padding, rounded corners and theme-aware shadows.
- */
+/* Windows drivers can render translucent native surface margins as black.
+ * Drop only external shadows; windows_surfaces clips the HWND to these rounded
+ * content bounds. Keep normal internal padding and the shared theme colours. */
+window.csd {
+  margin: 0;
+  box-shadow: none;
+  border-radius: 12px;
+}
+window.csd.maximized, window.csd.fullscreen { border-radius: 0; }
+popover { margin: 0; padding: 0; box-shadow: none; }
+popover > contents {
+  margin: 0;
+  box-shadow: none;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}

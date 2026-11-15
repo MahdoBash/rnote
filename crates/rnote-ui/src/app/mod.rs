@@ -53,6 +53,9 @@ mod imp {
             let obj = self.obj();
             self.parent_startup();
 
+            #[cfg(target_os = "windows")]
+            crate::windows_surfaces::install();
+
             self.setup_buildables();
             obj.setup_actions();
             obj.setup_action_accels();
