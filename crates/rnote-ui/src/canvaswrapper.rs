@@ -1050,7 +1050,8 @@ impl RnCanvasWrapper {
         if velocity[0].hypot(velocity[1]) < touchmotion::STOP_SPEED {
             return;
         }
-        let previous_frame = Cell::new(None);
+        // Start from the current frame so release does not insert an idle frame.
+        let previous_frame = Cell::new(self.frame_clock().map(|clock| clock.frame_time()));
         let frame_velocity = Cell::new(velocity);
         let tick = self.add_tick_callback(move |obj, clock| {
             let now = clock.frame_time();
