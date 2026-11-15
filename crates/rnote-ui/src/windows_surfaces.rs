@@ -48,6 +48,9 @@ pub(crate) fn install() {
     // Installed once during GTK startup, before any application window is created.
     // A realization hook also covers lazy menus, dialogs and future windows.
     unsafe {
+        // Registering a GType does not initialize its class or its signals.
+        // Startup can reach here before the first GtkWidget is constructed.
+        let widget_class = glib::gobject_ffi::g_type_class_ref(gtk4::Widget::static_type().into_glib());
         let signal = glib::gobject_ffi::g_signal_lookup(
             c"realize".as_ptr(),
             gtk4::Widget::static_type().into_glib(),
@@ -61,6 +64,7 @@ pub(crate) fn install() {
         );
         let mapped_signal = glib::gobject_ffi::g_signal_lookup(c"map".as_ptr(), gtk4::Widget::static_type().into_glib());
         glib::gobject_ffi::g_signal_add_emission_hook(mapped_signal, 0, Some(mapped), std::ptr::null_mut(), None);
+        glib::gobject_ffi::g_type_class_unref(widget_class);
 
     }
 }
