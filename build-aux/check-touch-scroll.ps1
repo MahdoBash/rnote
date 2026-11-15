@@ -38,6 +38,7 @@ public static class TouchScrollTest {
 }
 '@
 [TouchScrollTest]::Init()
+$env:GSK_RENDERER='cairo'
 $env:RNOTE_SCROLL_TRACE='1'
 foreach($mode in @('reference','canvas')) {
  $env:RNOTE_SCROLL_TEST=$mode
@@ -48,7 +49,7 @@ foreach($mode in @('reference','canvas')) {
   $app.Refresh()
   if($app.HasExited){Get-Content $log;throw "Probe application exited"}
   $handle=if($mode -eq 'reference'){[TouchScrollTest]::FindWindowW($null,'Scroll Reference')}else{$app.MainWindowHandle}
-  if($handle -eq 0){throw 'Missing test window'}
+  if($handle -eq 0){Get-Content $log;throw 'Missing test window'}
   [void][TouchScrollTest]::SetWindowPos($handle,[IntPtr]::Zero,50,50,1000,700,0x40)
   [void][TouchScrollTest]::SetForegroundWindow($handle)
   Start-Sleep -Seconds 1
