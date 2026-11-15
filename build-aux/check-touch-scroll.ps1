@@ -48,7 +48,7 @@ foreach($mode in @('reference','canvas')) {
   Start-Sleep -Seconds 7
   $app.Refresh()
   if($app.HasExited){Get-Content $log;throw "Probe application exited"}
-  $handle=if($mode -eq 'reference'){[TouchScrollTest]::FindWindowW($null,'Scroll Reference')}else{$app.MainWindowHandle}
+  $handle=if($mode -eq 'reference'){[IntPtr]([long]((Select-String -Path $log -Pattern 'SCROLL WINDOW (\d+)' | Select-Object -Last 1).Matches.Groups[1].Value))}else{$app.MainWindowHandle}
   if($handle -eq 0){Get-Content $log;throw 'Missing test window'}
   [void][TouchScrollTest]::SetWindowPos($handle,[IntPtr]::Zero,50,50,1000,700,0x40)
   [void][TouchScrollTest]::SetForegroundWindow($handle)

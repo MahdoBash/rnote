@@ -17,6 +17,12 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
             let window = gtk4::Window::builder().title("Scroll Reference")
                 .default_width(1000).default_height(700).child(&scroller).build();
             window.present();
+            #[cfg(target_os = "windows")]
+            if let Some(handle) = crate::windows_surfaces::window_handle(&window) {
+                eprintln!("SCROLL WINDOW {}", handle as usize);
+            }
+            // Keep the independent reference window alive for the external probe.
+            glib::timeout_add_local_once(std::time::Duration::from_secs(120), move || window.close());
             let s = scroller.clone();
             glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || s.vadjustment().set_value(10000.0));
             scroller

@@ -1,0 +1,35 @@
+name: Windows Touch Regression
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Build run containing the installer to test
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  touch:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: rnote-win-installer-artifact
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Install and test touch input
+        shell: pwsh
+        run: |
+          $installer=(Get-ChildItem installer/*.exe | Select-Object -First 1).FullName
+          $installation=Join-Path $env:RUNNER_TEMP RnoteTouch
+          $setup=Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installation" -Wait -PassThru
+          if($setup.ExitCode -ne 0){throw "Installer failed"}
+          ./build-aux/check-touch-scroll.ps1 -Executable "$installation/bin/rnote.exe"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: touch-diagnostics
+          path: scroll-*.txt
