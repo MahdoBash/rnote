@@ -495,11 +495,10 @@ impl RnColorPicker {
 
     #[allow(deprecated)]
     pub(crate) fn init(&self, _appwindow: &RnAppWindow) {
-        // The inline editor exposes hue, saturation/value, opacity and hex together.
-        // No scrolling container or separate, tall palette dialog is needed.
+        // Keep the palette and custom-color history, with the compact editor available through +.
         let chooser = gtk4::ColorChooserWidget::new();
         chooser.set_use_alpha(true);
-        chooser.set_show_editor(true);
+        chooser.set_show_editor(false);
         let popover = gtk4::Popover::new();
         popover.set_parent(&self.imp().colordialog_button.get());
         self.imp().color_popover.replace(Some(popover.clone()));
@@ -581,6 +580,10 @@ impl RnColorPicker {
                 }
             ));
         }
+        let palette = Button::with_label(&gettextrs::gettext("Palette"));
+        chooser.bind_property("show-editor", &palette, "visible").sync_create().build();
+        palette.connect_clicked(clone!(#[weak] chooser, move |_| chooser.set_show_editor(false)));
+        actions.append(&palette);
         let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
         actions.append(&spacer);
@@ -623,7 +626,7 @@ impl RnColorPicker {
                 } else {
                     colorpicker.fill_color()
                 });
-                chooser.set_show_editor(true);
+                chooser.set_show_editor(false);
                 popover.popup();
             }
         ));

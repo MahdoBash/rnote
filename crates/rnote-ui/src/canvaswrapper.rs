@@ -25,6 +25,7 @@ struct Connections {
     appwindow_show_scrollbars_bind: Option<glib::Binding>,
     appwindow_inertial_scrolling_bind: Option<glib::Binding>,
     page_indicator_corner_bind: Option<glib::Binding>,
+    focus_indicator_bind: Option<glib::Binding>,
     appwindow_righthanded_bind: Option<glib::Binding>,
 }
 
@@ -1127,7 +1128,10 @@ impl RnCanvasWrapper {
             .bind_property("selected", self, "page-indicator-corner")
             .sync_create()
             .build();
+        let focus_bind = appwindow.bind_property("focus-mode", &self.imp().page_indicator.get(), "visible")
+            .invert_boolean().sync_create().build();
         let mut connections = self.imp().connections.borrow_mut();
+        if let Some(old) = connections.focus_indicator_bind.replace(focus_bind) { old.unbind(); }
         if let Some(old) = connections.page_indicator_corner_bind.replace(corner_bind) {
             old.unbind();
         }
@@ -1166,6 +1170,7 @@ impl RnCanvasWrapper {
         self.canvas().disconnect_connections();
 
         let mut connections = self.imp().connections.borrow_mut();
+        if let Some(old) = connections.focus_indicator_bind.take() { old.unbind(); }
         if let Some(old) = connections.page_indicator_corner_bind.take() {
             old.unbind();
         }
