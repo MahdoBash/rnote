@@ -40,7 +40,7 @@ public static class TouchScrollTest {
 [TouchScrollTest]::Init()
 $env:GSK_RENDERER='cairo'
 $env:RNOTE_SCROLL_TRACE='1'
-foreach($mode in @('reference','canvas')) {
+foreach($mode in @('reference','canvas','expanding','disabled','drawing')) {
  $env:RNOTE_SCROLL_TEST=$mode
  $log=Join-Path $pwd "scroll-$mode.txt"
  $app=Start-Process $Executable -PassThru -RedirectStandardError $log
@@ -64,6 +64,33 @@ foreach($mode in @('reference','canvas')) {
   Start-Sleep -Seconds 1
  } finally { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
  Get-Content $log | Where-Object {$_ -match 'SCROLL'}
- if(-not (Select-String -Path $log -Pattern 'TouchEnd' -Quiet)){throw "No actual touch events reached $mode"}
+ $events=@();$frames=@()
+ foreach($line in Get-Content $log) {
+  if($line -match 'SCROLL EVENT (\d+) (TouchBegin|TouchEnd)'){$events+=@{T=[long]$Matches[1];Kind=$Matches[2]}}
+  if($line -match 'SCROLL FRAME (\d+) ([\d.-]+) ([\d.-]+)'){$frames+=@{T=[long]$Matches[1];X=[double]$Matches[2];Y=[double]$Matches[3]}}
+ }
+ $ends=@($events|Where-Object Kind -eq 'TouchEnd');$begins=@($events|Where-Object Kind -eq 'TouchBegin')
+ if($ends.Count -ne 4 -or $begins.Count -ne 4){throw "Expected all 4 touch sequences in $mode"}
+ if($mode -eq 'reference'){continue}
+ function PositionAt([long]$time) { ($frames|Where-Object {$_.T -le $time}|Select-Object -Last 1).Y }
+ $release=PositionAt ($ends[0].T+40)
+ $end=PositionAt ($begins[1].T-1)
+ $distance=$end-$release
+ if($mode -in @('disabled','drawing')) {
+  if([Math]::Abs($distance) -gt 2){throw "Unexpected momentum with ${mode}: $distance"}
+ } else {
+  if($distance -lt 25 -or $distance -gt 600){throw "Missing/excessive forward coast in ${mode}: $distance"}
+  $after=@($frames|Where-Object {$_.T -gt $ends[0].T+40 -and $_.T -lt $begins[1].T})
+  for($i=1;$i -lt $after.Count;$i++){if($after[$i].Y -lt $after[$i-1].Y-0.5){throw "Coast reversed in $mode"}}
+  $duration=$after[-1].T-$ends[0].T
+  if($duration -lt 150 -or $duration -gt 1600){throw "Coast duration out of range in ${mode}: $duration ms"}
+  $reverse=(PositionAt ($begins[3].T-1))-(PositionAt $ends[2].T)
+  if($reverse -gt -5){throw "Reverse flick lost momentum in ${mode}: $reverse"}
+ }
+ $paused=(PositionAt ($begins[2].T-1))-(PositionAt $ends[1].T)
+ if([Math]::Abs($paused) -gt 2){throw "Pause before release should prevent momentum in $mode"}
+ $stopped=(PositionAt ([long]::MaxValue))-(PositionAt ($begins[3].T+40))
+ if([Math]::Abs($stopped) -gt 2){throw "Touch did not stop momentum in $mode"}
+ Write-Output "PASS ${mode}: coast=$distance px; pause=$paused px; stop=$stopped px"
 }
 Remove-Item Env:RNOTE_SCROLL_TEST,Env:RNOTE_SCROLL_TRACE
