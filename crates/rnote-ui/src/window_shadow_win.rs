@@ -118,13 +118,14 @@ unsafe extern "system" {
 struct Shadow {
     window: Handle,
     enabled: Cell<bool>,
+    bounds: Cell<[i32; 4]>,
     scale: Cell<f64>,
     rendered: Cell<Option<(i32, i32, i32)>>,
     position: Cell<Option<(i32, i32)>>,
     updating: Cell<bool>,
 }
 
-pub(crate) fn update(owner: Handle, enabled: bool, scale: f64) {
+pub(crate) fn update(owner: Handle, enabled: bool, scale: f64, bounds: [i32; 4]) {
     unsafe {
         let mut data = 0usize;
         if GetWindowSubclass(owner, Some(messages), ID, &mut data) == 0 {
@@ -152,6 +153,7 @@ pub(crate) fn update(owner: Handle, enabled: bool, scale: f64) {
             let state = Box::new(Shadow {
                 window,
                 enabled: Cell::new(enabled),
+                bounds: Cell::new(bounds),
                 scale: Cell::new(scale),
                 rendered: Cell::new(None),
                 position: Cell::new(None),
@@ -166,6 +168,7 @@ pub(crate) fn update(owner: Handle, enabled: bool, scale: f64) {
         }
         let state = &*(data as *mut Shadow);
         state.enabled.set(enabled);
+        state.bounds.set(bounds);
         state.scale.set(scale);
         sync(owner, state);
     }
@@ -214,7 +217,12 @@ unsafe fn sync(owner: Handle, state: &Shadow) {
         } else {
             let mut rect = Rect::default();
             if GetWindowRect(owner, &mut rect) != 0 {
-                let pad = (12.0 * state.scale.get()).ceil().max(1.0) as i32;
+                let [left, top, right, bottom] = state.bounds.get();
+                rect.right = rect.left + right;
+                rect.bottom = rect.top + bottom;
+                rect.left += left;
+                rect.top += top;
+                let pad = (8.0 * state.scale.get()).ceil().max(1.0) as i32;
                 let width = rect.right - rect.left + 2 * pad;
                 let height = rect.bottom - rect.top + 2 * pad;
                 let position = Point {
@@ -262,7 +270,7 @@ fn alpha(x: f64, y: f64, width: f64, height: f64, pad: f64, scale: f64) -> u8 {
     if distance <= 0.0 {
         0
     } else {
-        (64.0 * (-distance * distance / (2.0 * (4.0 * scale).powi(2))).exp()).round() as u8
+        (64.0 * (-distance * distance / (2.0 * (2.5 * scale).powi(2))).exp()).round() as u8
     }
 }
 unsafe fn render(

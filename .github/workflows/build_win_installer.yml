@@ -127,6 +127,18 @@ jobs:
           $errors = Get-Content "$env:RUNNER_TEMP/rnote-stderr.txt" -Raw
           if ($errors -match "(CRITICAL|panicked|Failed to build template)") { throw $errors }
 
+      - name: Compare Windows touch scrolling with GTK
+        shell: pwsh
+        run: ./build-aux/check-touch-scroll.ps1 -Executable "$env:RUNNER_TEMP/RnoteSmoke/bin/rnote.exe"
+
+      - name: Upload touch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: touch-diagnostics
+          path: scroll-*.txt
+          if-no-files-found: warn
+
       - name: Upload window check image
         uses: actions/upload-artifact@v7
         with:

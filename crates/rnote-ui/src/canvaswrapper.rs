@@ -1,4 +1,5 @@
 mod pageposition;
+mod scrolltrace;
 
 // Imports
 use crate::{RnAppWindow, RnCanvas, RnContextMenu, canvas::reject_pointer_input};
@@ -227,6 +228,7 @@ mod imp {
                 .group_with(&self.canvas_zoom_gesture);
 
             self.setup_input();
+            super::scrolltrace::install(&obj);
             self.page_indicator_popover.connect_show(clone!(
                 #[weak]
                 obj,

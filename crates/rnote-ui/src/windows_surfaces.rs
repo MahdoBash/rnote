@@ -227,7 +227,7 @@ fn clip(
             // On success Windows owns the region. Do not delete it.
             last.set(Some(key));
             if widget.is::<gtk4::Window>() {
-                crate::window_shadow_win::update(window, !square, scale);
+                crate::window_shadow_win::update(window, !square, scale, [x, y, right + 1, bottom + 1]);
             }
         }
     }

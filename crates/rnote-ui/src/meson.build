@@ -51,6 +51,7 @@ rnote_ui_sources = files(
     'canvasmenu.rs',
     'canvaswrapper.rs',
     'canvaswrapper/pageposition.rs',
+  'canvaswrapper/scrolltrace.rs',
     'windows_surfaces.rs',
     'screenpicker_win.rs',
     'window_shadow_win.rs',
