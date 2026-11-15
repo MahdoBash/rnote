@@ -93,7 +93,7 @@
                 <property name="child">
                   <object class="GtkLabel" id="page_indicator_label" />
                 </property>
-                <style><class name="osd" /><class name="page-indicator" /></style>
+                <style><class name="page-indicator" /></style>
               </object>
             </child>
           </object>

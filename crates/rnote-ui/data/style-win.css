@@ -5,8 +5,9 @@ window.csd {
   margin: 0;
   box-shadow: none;
   border-radius: 12px;
+  border: 1px solid alpha(var(--window-fg-color), 0.3);
 }
-window.csd.maximized, window.csd.fullscreen { border-radius: 0; }
+window.csd.maximized, window.csd.fullscreen { border-radius: 0; border: none; }
 popover { margin: 0; padding: 0; box-shadow: none; }
 popover > contents {
   margin: 0;

@@ -1,5 +1,4 @@
 mod pageposition;
-mod touchmotion;
 
 // Imports
 use crate::{RnAppWindow, RnCanvas, RnContextMenu, canvas::reject_pointer_input};
@@ -39,8 +38,6 @@ mod imp {
         pub(crate) show_scrollbars: Cell<bool>,
         pub(crate) block_pinch_zoom: Cell<bool>,
         pub(crate) inertial_scrolling: Cell<bool>,
-        pub(crate) touch_motion: RefCell<touchmotion::TouchMotion>,
-        pub(crate) touch_tick: RefCell<Option<gtk4::TickCallbackId>>,
         pub(crate) pointer_pos: Cell<Option<Vector2>>,
         pub(crate) page_indicator_corner: Cell<u32>,
         pub(crate) page_position: Cell<Option<(u32, u32)>>,
@@ -162,8 +159,6 @@ mod imp {
                 show_scrollbars: Cell::new(false),
                 block_pinch_zoom: Cell::new(false),
                 inertial_scrolling: Cell::new(true),
-                touch_motion: RefCell::new(touchmotion::TouchMotion::default()),
-                touch_tick: RefCell::new(None),
                 pointer_pos: Cell::new(None),
                 last_contextmenu_pos: Cell::new(None),
 
@@ -232,27 +227,6 @@ mod imp {
                 .group_with(&self.canvas_zoom_gesture);
 
             self.setup_input();
-            let interrupt = gtk4::EventControllerLegacy::new();
-            interrupt.set_propagation_phase(PropagationPhase::Capture);
-            interrupt.connect_event(clone!(
-                #[weak]
-                obj,
-                #[upgrade_or]
-                glib::Propagation::Proceed,
-                move |_, event| {
-                    if matches!(
-                        event.event_type(),
-                        gdk::EventType::TouchBegin
-                            | gdk::EventType::ButtonPress
-                            | gdk::EventType::Scroll
-                    ) {
-                        obj.stop_touch_momentum();
-                    }
-                    glib::Propagation::Proceed
-                }
-            ));
-            self.scroller.add_controller(interrupt);
-            obj.connect_unmap(|obj| obj.stop_touch_momentum());
             self.page_indicator_popover.connect_show(clone!(
                 #[weak]
                 obj,
@@ -308,7 +282,6 @@ mod imp {
         }
 
         fn dispose(&self) {
-            self.obj().stop_touch_momentum();
             self.obj().disconnect_connections();
 
             if let Some(handler) = self.canvas_touch_drawing_handler.take() {
@@ -421,12 +394,8 @@ mod imp {
         }
 
         fn canvas_kinetic_scrolling_update(&self) {
-            self.obj().stop_touch_momentum();
-            self.touch_motion.borrow_mut().cancel();
             self.scroller.set_kinetic_scrolling(
-                !cfg!(target_os = "windows")
-                    && !self.canvas.touch_drawing()
-                    && self.inertial_scrolling.get(),
+                !self.canvas.touch_drawing() && self.inertial_scrolling.get(),
             );
         }
 
@@ -443,7 +412,6 @@ mod imp {
         }
 
         pub(super) fn workaround_cancel_kinetic_scrolling_for_zoom(&self) {
-            self.obj().stop_touch_momentum();
             self.workaround_disable_kinetic_scrolling();
             self.workaround_restore_kinetic_scrolling();
         }
@@ -539,29 +507,6 @@ mod imp {
                     #[weak(rename_to=canvaswrapper)]
                     obj,
                     move |gesture, _, _| {
-                        let touch = gesture.current_event().is_some_and(|event| {
-                            event.device_tool().is_none()
-                                && (matches!(
-                                    event.event_type(),
-                                    gdk::EventType::TouchBegin | gdk::EventType::TouchUpdate
-                                ) || event.is_pointer_emulated()
-                                    || event.device().is_some_and(|device| {
-                                        device.source() == gdk::InputSource::Touchscreen
-                                    }))
-                        });
-                        if touch && !canvaswrapper.canvas().touch_drawing() {
-                            if cfg!(target_os = "windows") {
-                                canvaswrapper
-                                    .imp()
-                                    .touch_motion
-                                    .borrow_mut()
-                                    .begin(Instant::now());
-                            } else {
-                                gesture.set_state(EventSequenceState::Denied);
-                                return;
-                            }
-                        }
-
                         // We don't claim the sequence, because we we want to allow touch zooming.
                         // When the zoom gesture is recognized, it claims it and denies this touch drag gesture.
 
@@ -585,11 +530,6 @@ mod imp {
                     obj,
                     move |_, x, y| {
                         let canvas = canvaswrapper.canvas();
-                        canvaswrapper
-                            .imp()
-                            .touch_motion
-                            .borrow_mut()
-                            .sample(Instant::now(), [x, y]);
                         let new_offset = touch_drag_start.get() - Vector2::new(x, y);
                         let widget_flags = canvas.engine_mut().camera_set_offset_expand(new_offset);
                         canvas.emit_handle_widget_flags(widget_flags);
@@ -598,17 +538,7 @@ mod imp {
                 self.canvas_drag_gesture.connect_drag_end(clone!(
                     #[weak(rename_to=canvaswrapper)]
                     obj,
-                    move |_, x, y| {
-                        let velocity = canvaswrapper
-                            .imp()
-                            .touch_motion
-                            .borrow_mut()
-                            .release(Instant::now(), [x, y]);
-                        if canvaswrapper.inertial_scrolling()
-                            && !canvaswrapper.canvas().touch_drawing()
-                        {
-                            canvaswrapper.start_touch_momentum(velocity);
-                        }
+                    move |_, _, _| {
                         let widget_flags = canvaswrapper
                             .canvas()
                             .engine_mut()
@@ -619,15 +549,6 @@ mod imp {
                     }
                 ));
             }
-
-            self.canvas_drag_gesture.connect_cancel(clone!(
-                #[weak(rename_to=canvaswrapper)]
-                obj,
-                move |_, _| {
-                    canvaswrapper.imp().touch_motion.borrow_mut().cancel();
-                    canvaswrapper.stop_touch_momentum();
-                }
-            ));
 
             // Move Canvas with middle mouse button
             {
@@ -708,8 +629,6 @@ mod imp {
                     obj,
                     move |gesture, _| {
                         gesture.set_state(EventSequenceState::Claimed);
-                        canvaswrapper.stop_touch_momentum();
-                        canvaswrapper.imp().touch_motion.borrow_mut().cancel();
 
                         // workaround for https://gitlab.gnome.org/GNOME/gtk/-/issues/187
                         canvaswrapper.imp().workaround_disable_kinetic_scrolling();
@@ -1039,53 +958,6 @@ impl Default for RnCanvasWrapper {
 }
 
 impl RnCanvasWrapper {
-    fn stop_touch_momentum(&self) {
-        if let Some(tick) = self.imp().touch_tick.borrow_mut().take() {
-            tick.remove();
-        }
-    }
-
-    fn start_touch_momentum(&self, velocity: [f64; 2]) {
-        self.stop_touch_momentum();
-        if velocity[0].hypot(velocity[1]) < touchmotion::STOP_SPEED {
-            return;
-        }
-        // Start from the current frame so release does not insert an idle frame.
-        let previous_frame = Cell::new(self.frame_clock().map(|clock| clock.frame_time()));
-        let frame_velocity = Cell::new(velocity);
-        let tick = self.add_tick_callback(move |obj, clock| {
-            let now = clock.frame_time();
-            let Some(previous) = previous_frame.replace(Some(now)) else {
-                return glib::ControlFlow::Continue;
-            };
-            let dt = (now - previous) as f64 / 1_000_000.0;
-            let mut velocity = frame_velocity.get();
-            let delta = touchmotion::advance(&mut velocity, dt);
-            let canvas = obj.canvas();
-            let old = canvas.engine_ref().camera.offset();
-            let requested = old + Vector2::new(delta[0], delta[1]);
-            // Use the original camera bounds, without adding pages during a flick.
-            let flags = canvas.engine_mut().camera_set_offset(requested);
-            let actual = canvas.engine_ref().camera.offset();
-            for axis in 0..2 {
-                if (actual[axis] - requested[axis]).abs() > 0.01 {
-                    velocity[axis] = 0.0;
-                }
-            }
-            canvas.emit_handle_widget_flags(flags);
-            frame_velocity.set(velocity);
-            if velocity[0].hypot(velocity[1]) < touchmotion::STOP_SPEED {
-                obj.imp().touch_tick.borrow_mut().take();
-                let flags = canvas.engine_mut().update_rendering_current_viewport();
-                canvas.emit_handle_widget_flags(flags);
-                glib::ControlFlow::Break
-            } else {
-                glib::ControlFlow::Continue
-            }
-        });
-        self.imp().touch_tick.replace(Some(tick));
-    }
-
     /// Called after allocation, once scrolling, zoom and document geometry agree.
     pub(crate) fn update_page_indicator(&self) {
         let imp = self.imp();

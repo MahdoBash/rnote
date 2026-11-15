@@ -44,13 +44,20 @@ unsafe extern "system" {
     fn DeleteObject(object: Handle) -> i32;
 }
 
+pub(crate) fn window_handle(widget: &impl IsA<gtk4::Widget>) -> Option<Handle> {
+    let surface = widget.as_ref().native()?.surface()?;
+    let handle = unsafe { gdk_win32_surface_get_handle(surface.to_glib_none().0) };
+    (!handle.is_null()).then_some(handle)
+}
+
 pub(crate) fn install() {
     // Installed once during GTK startup, before any application window is created.
     // A realization hook also covers lazy menus, dialogs and future windows.
     unsafe {
         // Registering a GType does not initialize its class or its signals.
         // Startup can reach here before the first GtkWidget is constructed.
-        let widget_class = glib::gobject_ffi::g_type_class_ref(gtk4::Widget::static_type().into_glib());
+        let widget_class =
+            glib::gobject_ffi::g_type_class_ref(gtk4::Widget::static_type().into_glib());
         let signal = glib::gobject_ffi::g_signal_lookup(
             c"realize".as_ptr(),
             gtk4::Widget::static_type().into_glib(),
@@ -62,10 +69,18 @@ pub(crate) fn install() {
             std::ptr::null_mut(),
             None,
         );
-        let mapped_signal = glib::gobject_ffi::g_signal_lookup(c"map".as_ptr(), gtk4::Widget::static_type().into_glib());
-        glib::gobject_ffi::g_signal_add_emission_hook(mapped_signal, 0, Some(mapped), std::ptr::null_mut(), None);
+        let mapped_signal = glib::gobject_ffi::g_signal_lookup(
+            c"map".as_ptr(),
+            gtk4::Widget::static_type().into_glib(),
+        );
+        glib::gobject_ffi::g_signal_add_emission_hook(
+            mapped_signal,
+            0,
+            Some(mapped),
+            std::ptr::null_mut(),
+            None,
+        );
         glib::gobject_ffi::g_type_class_unref(widget_class);
-
     }
 }
 
@@ -110,21 +125,31 @@ unsafe extern "C" fn mapped(
     values: *const glib::gobject_ffi::GValue,
     _: *mut c_void,
 ) -> glib::ffi::gboolean {
-    if count == 0 { return 1; }
+    if count == 0 {
+        return 1;
+    }
     let widget: gtk4::Widget = unsafe {
         from_glib_none(glib::gobject_ffi::g_value_get_object(values) as *mut gtk4::ffi::GtkWidget)
     };
-    if !widget.is::<gtk4::Window>() && !widget.is::<gtk4::Popover>() { return 1; }
+    if !widget.is::<gtk4::Window>() && !widget.is::<gtk4::Popover>() {
+        return 1;
+    }
     let last = Cell::new(None);
     let frames = Cell::new(0);
     widget.add_tick_callback(move |widget, _| {
         if let Some(native) = widget.dynamic_cast_ref::<gtk4::Native>() {
-            if let Some(surface) = native.surface() { clip(widget, &surface, &last); }
+            if let Some(surface) = native.surface() {
+                clip(widget, &surface, &last);
+            }
         }
         // Tick callbacks precede allocation. The second frame also covers a
         // widget that had no allocated content in its first frame.
         frames.set(frames.get() + 1);
-        if frames.get() >= 2 { glib::ControlFlow::Break } else { glib::ControlFlow::Continue }
+        if frames.get() >= 2 {
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
     });
     1
 }
@@ -201,6 +226,9 @@ fn clip(
         } else {
             // On success Windows owns the region. Do not delete it.
             last.set(Some(key));
+            if widget.is::<gtk4::Window>() {
+                crate::window_shadow_win::update(window, !square, scale);
+            }
         }
     }
 }

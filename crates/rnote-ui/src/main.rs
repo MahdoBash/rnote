@@ -37,6 +37,10 @@ pub(crate) mod utils;
 pub(crate) mod workspacebrowser;
 #[cfg(target_os = "windows")]
 pub(crate) mod windows_surfaces;
+#[cfg(target_os = "windows")]
+pub(crate) mod screenpicker_win;
+#[cfg(target_os = "windows")]
+pub(crate) mod window_shadow_win;
 
 // Re-exports
 pub(crate) use app::RnApp;

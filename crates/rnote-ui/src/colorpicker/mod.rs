@@ -510,7 +510,80 @@ impl RnColorPicker {
         content.set_margin_end(8);
         content.append(&chooser);
         let actions = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
-        actions.set_halign(gtk4::Align::End);
+        actions.set_halign(gtk4::Align::Fill);
+        #[cfg(target_os = "windows")]
+        {
+            hide_builtin_eyedropper(chooser.upcast_ref());
+            let pick = Button::from_icon_name("color-select-symbolic");
+            pick.set_tooltip_text(Some(&gettextrs::gettext("Pick a color from the screen")));
+            actions.append(&pick);
+            let appwindow = _appwindow.clone();
+            pick.connect_clicked(clone!(
+                #[weak]
+                appwindow,
+                #[weak]
+                chooser,
+                #[weak]
+                popover,
+                move |_| {
+                    // End GTK's popup grab before taking Windows mouse capture.
+                    popover.set_visible(false);
+                    glib::idle_add_local_once(clone!(
+                        #[weak]
+                        appwindow,
+                        #[weak]
+                        chooser,
+                        #[weak]
+                        popover,
+                        move || {
+                            let Some(handle) = crate::windows_surfaces::window_handle(&appwindow)
+                            else {
+                                popover.popup();
+                                return;
+                            };
+                            let completed = clone!(
+                                #[weak]
+                                appwindow,
+                                #[weak]
+                                chooser,
+                                #[weak]
+                                popover,
+                                move |color: Option<[u8; 3]>| {
+                                    // Finish the native mouse message before reopening GTK's popup.
+                                    glib::idle_add_local_once(clone!(
+                                        #[weak]
+                                        appwindow,
+                                        #[weak]
+                                        chooser,
+                                        #[weak]
+                                        popover,
+                                        move || {
+                                            if let Some([r, g, b]) = color {
+                                                chooser.set_rgba(&gdk::RGBA::new(
+                                                    r as f32 / 255.0,
+                                                    g as f32 / 255.0,
+                                                    b as f32 / 255.0,
+                                                    1.0,
+                                                ));
+                                            }
+                                            if appwindow.is_visible() {
+                                                popover.popup();
+                                            }
+                                        }
+                                    ));
+                                }
+                            );
+                            if !crate::screenpicker_win::pick(handle, completed) {
+                                popover.popup();
+                            }
+                        }
+                    ));
+                }
+            ));
+        }
+        let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        actions.append(&spacer);
         let cancel = Button::with_label(&gettextrs::gettext("Cancel"));
         let apply = Button::with_label(&gettextrs::gettext("Apply"));
         apply.add_css_class("suggested-action");
@@ -611,4 +684,22 @@ impl RnColorPicker {
         imp.setter_8.set_active(false);
         imp.setter_9.set_active(false);
     }
+}
+
+#[cfg(target_os = "windows")]
+fn hide_builtin_eyedropper(widget: &Widget) -> bool {
+    if let Some(button) = widget.downcast_ref::<Button>() {
+        if button.icon_name().as_deref() == Some("color-select-symbolic") {
+            button.set_visible(false);
+            return true;
+        }
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if hide_builtin_eyedropper(&current) {
+            return true;
+        }
+        child = current.next_sibling();
+    }
+    false
 }

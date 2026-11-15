@@ -248,7 +248,7 @@ toast {
     margin-right: 72px;
 }
 
-/* Non-interactive page position badge, beside the vertical scrollbar. */
+/* Page navigation follows the current application colour scheme. */
 .page-indicator {
     margin: 0;
     border-radius: 12px;
@@ -256,6 +256,15 @@ toast {
     font-variant-numeric: tabular-nums;
 }
 
-.page-indicator > button { min-height: 32px; padding: 4px 12px; border-radius: 12px; }
+.page-indicator > button {
+    min-height: 32px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    background-color: var(--popover-bg-color);
+    color: var(--popover-fg-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 6px alpha(black, 0.16);
+}
+.page-indicator > button:hover { border-color: var(--accent-color); }
 .brush-style-choice { border-radius: 10px; }
 .brush-style-choice:checked { background-color: var(--accent-bg-color); color: var(--accent-fg-color); }

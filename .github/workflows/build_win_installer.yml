@@ -75,8 +75,8 @@ jobs:
         run: |
           rustc --edition 2024 --test build-aux/page-indicator-tests.rs -o page-indicator-tests.exe
           ./page-indicator-tests.exe
-          rustc --edition 2024 --test build-aux/touch-motion-tests.rs -o touch-motion-tests.exe
-          ./touch-motion-tests.exe
+          rustc --edition 2024 --test build-aux/screen-picker-tests.rs -o screen-picker-tests.exe
+          ./screen-picker-tests.exe --test-threads=1
 
       - name: Prerequisites
         run: |
@@ -126,6 +126,13 @@ jobs:
           Stop-Process -Id $app.Id
           $errors = Get-Content "$env:RUNNER_TEMP/rnote-stderr.txt" -Raw
           if ($errors -match "(CRITICAL|panicked|Failed to build template)") { throw $errors }
+
+      - name: Upload window check image
+        uses: actions/upload-artifact@v7
+        with:
+          name: window-check
+          path: window-check.png
+          if-no-files-found: error
 
       - name: Upload installer (workflow artifact)
         uses: actions/upload-artifact@v7
