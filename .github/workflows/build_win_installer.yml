@@ -62,6 +62,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Restore Rust build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            _mesonbuild/cargo-home
+            _mesonbuild/target
+          key: windows-rust-1.99-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: windows-rust-1.99-${{ hashFiles('Cargo.lock') }}-
+
       - name: Test page indicator calculations
         run: |
           rustc --edition 2024 --test build-aux/page-indicator-tests.rs -o page-indicator-tests.exe
@@ -79,6 +88,15 @@ jobs:
       - name: Build
         run: just ci=true build
 
+      - name: Save Rust build cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            _mesonbuild/cargo-home
+            _mesonbuild/target
+          key: windows-rust-1.99-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+
       - name: Build installer
         run: just ci=true build-win-installer
 
@@ -91,6 +109,7 @@ jobs:
           if ($setup.ExitCode -ne 0) { throw "Installer failed: $($setup.ExitCode)" }
           # Hosted runners have no supported GPU; exercise startup with Cairo.
           $env:GSK_RENDERER = "cairo"
+          $env:RNOTE_TRACE_WINDOWS_REGIONS = "1"
           $app = Start-Process "$installation/bin/rnote.exe" -PassThru -RedirectStandardError "$env:RUNNER_TEMP/rnote-stderr.txt"
           Start-Sleep -Seconds 15
           $app.Refresh()
@@ -99,7 +118,11 @@ jobs:
             throw "Application exited during startup: $($app.ExitCode)"
           }
           if ($app.MainWindowHandle -eq 0) { throw "Application did not open a window" }
-          ./build-aux/check-window-region.ps1 -WindowHandle $app.MainWindowHandle
+          try {
+            ./build-aux/check-window-region.ps1 -WindowHandle ($app.MainWindowHandle.ToInt64())
+          } finally {
+            Get-Content "$env:RUNNER_TEMP/rnote-stderr.txt"
+          }
           Stop-Process -Id $app.Id
           $errors = Get-Content "$env:RUNNER_TEMP/rnote-stderr.txt" -Raw
           if ($errors -match "(CRITICAL|panicked|Failed to build template)") { throw $errors }

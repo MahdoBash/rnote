@@ -59,6 +59,9 @@ pub(crate) fn install() {
             std::ptr::null_mut(),
             None,
         );
+        let mapped_signal = glib::gobject_ffi::g_signal_lookup(c"map".as_ptr(), gtk4::Widget::static_type().into_glib());
+        glib::gobject_ffi::g_signal_add_emission_hook(mapped_signal, 0, Some(mapped), std::ptr::null_mut(), None);
+
     }
 }
 
@@ -92,6 +95,33 @@ unsafe extern "C" fn realized(
             }
         });
     }
+    1
+}
+
+// Initial surface layout may happen inside realize, before our layout handler
+// is connected. Mapping is a separate, guaranteed initial clipping point.
+unsafe extern "C" fn mapped(
+    _: *mut glib::gobject_ffi::GSignalInvocationHint,
+    count: u32,
+    values: *const glib::gobject_ffi::GValue,
+    _: *mut c_void,
+) -> glib::ffi::gboolean {
+    if count == 0 { return 1; }
+    let widget: gtk4::Widget = unsafe {
+        from_glib_none(glib::gobject_ffi::g_value_get_object(values) as *mut gtk4::ffi::GtkWidget)
+    };
+    if !widget.is::<gtk4::Window>() && !widget.is::<gtk4::Popover>() { return 1; }
+    let last = Cell::new(None);
+    let frames = Cell::new(0);
+    widget.add_tick_callback(move |widget, _| {
+        if let Some(native) = widget.dynamic_cast_ref::<gtk4::Native>() {
+            if let Some(surface) = native.surface() { clip(widget, &surface, &last); }
+        }
+        // Tick callbacks precede allocation. The second frame also covers a
+        // widget that had no allocated content in its first frame.
+        frames.set(frames.get() + 1);
+        if frames.get() >= 2 { glib::ControlFlow::Break } else { glib::ControlFlow::Continue }
+    });
     1
 }
 
@@ -158,7 +188,11 @@ fn clip(
         if region.is_null() {
             return;
         }
-        if SetWindowRgn(window, region, 1) == 0 {
+        let result = SetWindowRgn(window, region, 1);
+        if std::env::var_os("RNOTE_TRACE_WINDOWS_REGIONS").is_some() {
+            eprintln!("Native region: hwnd={window:?}, bounds={key:?}, result={result}");
+        }
+        if result == 0 {
             DeleteObject(region);
         } else {
             // On success Windows owns the region. Do not delete it.
