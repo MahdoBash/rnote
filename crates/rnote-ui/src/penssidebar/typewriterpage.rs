@@ -5,7 +5,7 @@ use gtk4::{
     Widget, glib, glib::clone, pango, prelude::*, subclass::prelude::*,
 };
 use rnote_engine::strokes::textstroke::{TextAlignment, TextAttribute, TextStyle};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use tracing::debug;
 
 mod imp {
@@ -14,6 +14,7 @@ mod imp {
     #[derive(Default, Debug, CompositeTemplate)]
     #[template(resource = "/com/github/flxzt/rnote/ui/penssidebar/typewriterpage.ui")]
     pub(crate) struct RnTypewriterPage {
+        pub(super) refreshing: Cell<bool>,
         pub(super) prev_picked_font_family: RefCell<Option<pango::FontFamily>>,
 
         #[template_child]
@@ -147,9 +148,14 @@ impl RnTypewriterPage {
             .set_value(TextStyle::FONT_SIZE_DEFAULT);
 
         imp.font_size_spinbutton.connect_value_changed(clone!(
+            #[weak(rename_to=page)]
+            self,
             #[weak]
             appwindow,
             move |spinbutton| {
+                if page.imp().refreshing.get() {
+                    return;
+                }
                 let font_size = spinbutton.value();
                 let Some(canvas) = appwindow.active_tab_canvas() else {
                     return;
@@ -213,10 +219,12 @@ impl RnTypewriterPage {
         // Alignment
         imp.text_align_start_togglebutton
             .connect_active_notify(clone!(
+                #[weak(rename_to=page)]
+                self,
                 #[weak]
                 appwindow,
                 move |togglebutton| {
-                    if !togglebutton.is_active() {
+                    if page.imp().refreshing.get() || !togglebutton.is_active() {
                         return;
                     }
                     let Some(canvas) = appwindow.active_tab_canvas() else {
@@ -238,10 +246,12 @@ impl RnTypewriterPage {
 
         imp.text_align_center_togglebutton
             .connect_active_notify(clone!(
+                #[weak(rename_to=page)]
+                self,
                 #[weak]
                 appwindow,
                 move |togglebutton| {
-                    if !togglebutton.is_active() {
+                    if page.imp().refreshing.get() || !togglebutton.is_active() {
                         return;
                     }
                     let Some(canvas) = appwindow.active_tab_canvas() else {
@@ -263,10 +273,12 @@ impl RnTypewriterPage {
 
         imp.text_align_end_togglebutton
             .connect_active_notify(clone!(
+                #[weak(rename_to=page)]
+                self,
                 #[weak]
                 appwindow,
                 move |togglebutton| {
-                    if !togglebutton.is_active() {
+                    if page.imp().refreshing.get() || !togglebutton.is_active() {
                         return;
                     }
                     let Some(canvas) = appwindow.active_tab_canvas() else {
@@ -288,10 +300,12 @@ impl RnTypewriterPage {
 
         imp.text_align_fill_togglebutton
             .connect_active_notify(clone!(
+                #[weak(rename_to=page)]
+                self,
                 #[weak]
                 appwindow,
                 move |togglebutton| {
-                    if !togglebutton.is_active() {
+                    if page.imp().refreshing.get() || !togglebutton.is_active() {
                         return;
                     }
                     let Some(canvas) = appwindow.active_tab_canvas() else {
@@ -322,9 +336,11 @@ impl RnTypewriterPage {
             .typewriter_config
             .clone();
 
+        imp.refreshing.set(true);
         imp.font_size_spinbutton
             .set_value(typewriter_config.text_style.font_size);
 
         self.set_alignment(typewriter_config.text_style.alignment);
+        imp.refreshing.set(false);
     }
 }

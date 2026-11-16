@@ -1,13 +1,17 @@
+mod recognize;
+
 // Imports
 use super::PenBehaviour;
 use super::PenStyle;
 use super::pensconfig::brushconfig::BrushStyle;
-use crate::engine::{EngineView, EngineViewMut};
+use crate::engine::{EngineTask, EngineView, EngineViewMut};
 use crate::store::StrokeKey;
 use crate::strokes::BrushStroke;
 use crate::strokes::Stroke;
+use crate::tasks::{PeriodicTaskHandle, PeriodicTaskResult};
 use crate::{DrawableOnDoc, WidgetFlags};
 use p2d::bounding_volume::{Aabb, BoundingVolume};
+use p2d::math::Vector2;
 use piet::RenderContext;
 use rnote_compose::Constraints;
 use rnote_compose::Style;
@@ -17,8 +21,8 @@ use rnote_compose::builders::{
 };
 use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::penevent::{PenEvent, PenProgress};
-use rnote_compose::penpath::{Element, Segment};
-use std::time::Instant;
+use rnote_compose::penpath::{Element, PenPath, Segment};
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 enum BrushState {
@@ -33,12 +37,25 @@ enum BrushState {
 #[derive(Debug)]
 pub struct Brush {
     state: BrushState,
+    hold: Option<ShapeHold>,
+    hold_task: Option<PeriodicTaskHandle>,
+}
+
+#[derive(Debug)]
+struct ShapeHold {
+    points: Vec<Element>,
+    anchor: Vector2,
+    moved_at: Instant,
+    attempted: bool,
+    original: Option<PenPath>,
 }
 
 impl Default for Brush {
     fn default() -> Self {
         Self {
             state: BrushState::Idle,
+            hold: None,
+            hold_task: None,
         }
     }
 }
@@ -49,6 +66,8 @@ impl PenBehaviour for Brush {
     }
 
     fn deinit(&mut self) -> WidgetFlags {
+        self.hold_task = None;
+        self.hold = None;
         WidgetFlags::default()
     }
 
@@ -67,6 +86,83 @@ impl PenBehaviour for Brush {
         engine_view: &mut EngineViewMut,
     ) -> (EventResult<PenProgress>, WidgetFlags) {
         let mut widget_flags = WidgetFlags::default();
+
+        // Preserve the builder while showing the recognized path. Moving again
+        // restores the freehand stroke and continues it; releasing commits once.
+        if let (
+            BrushState::Drawing {
+                current_stroke_key, ..
+            },
+            Some(hold),
+        ) = (&self.state, self.hold.as_mut())
+        {
+            if let PenEvent::Down { element, .. } = &event {
+                let zoom = engine_view.camera.total_zoom();
+                if element.pos.distance(hold.anchor) * zoom > 3.0 {
+                    hold.anchor = element.pos;
+                    hold.moved_at = now;
+                    hold.attempted = false;
+                    if let Some(original) = hold.original.take() {
+                        if let Some(Stroke::BrushStroke(stroke)) =
+                            engine_view.store.get_stroke_mut(*current_stroke_key)
+                        {
+                            stroke.replace_path(original);
+                        }
+                        engine_view.store.regenerate_rendering_for_stroke(
+                            *current_stroke_key,
+                            engine_view.camera.viewport(),
+                            engine_view.camera.image_scale(),
+                        );
+                        widget_flags.redraw = true;
+                    }
+                }
+                if hold.original.is_none()
+                    && hold.points.len() <= 10000
+                    && hold
+                        .points
+                        .last()
+                        .is_none_or(|p| p.pos.distance(element.pos) * zoom > 0.5)
+                {
+                    hold.points.push(*element);
+                }
+            }
+            if hold.original.is_some() {
+                if matches!(event, PenEvent::Up { .. } | PenEvent::Cancel) {
+                    let key = *current_stroke_key;
+                    engine_view.store.update_geometry_for_stroke(key);
+                    engine_view.store.regenerate_rendering_for_stroke(
+                        key,
+                        engine_view.camera.viewport(),
+                        engine_view.camera.image_scale(),
+                    );
+                    widget_flags |= engine_view
+                        .document
+                        .resize_autoexpand(engine_view.store, engine_view.camera);
+                    widget_flags |= engine_view.store.record(now);
+                    widget_flags.store_modified = true;
+                    widget_flags.redraw = true;
+                    self.state = BrushState::Idle;
+                    self.hold = None;
+                    self.hold_task = None;
+                    return (
+                        EventResult {
+                            handled: true,
+                            propagate: EventPropagation::Stop,
+                            progress: PenProgress::Finished,
+                        },
+                        widget_flags,
+                    );
+                }
+                return (
+                    EventResult {
+                        handled: true,
+                        propagate: EventPropagation::Stop,
+                        progress: PenProgress::InProgress,
+                    },
+                    widget_flags,
+                );
+            }
+        }
 
         let event_result = match (&mut self.state, event) {
             (BrushState::Idle, PenEvent::Down { element, .. }) => {
@@ -111,6 +207,22 @@ impl PenBehaviour for Brush {
                         engine_view.camera.viewport(),
                         engine_view.camera.image_scale(),
                     );
+
+                    self.hold = Some(ShapeHold {
+                        points: vec![element],
+                        anchor: element.pos,
+                        moved_at: now,
+                        attempted: false,
+                        original: None,
+                    });
+                    let tx = engine_view.tasks_tx.clone();
+                    self.hold_task = Some(PeriodicTaskHandle::new(
+                        move || {
+                            tx.send(EngineTask::RecognizeBrushHold(current_stroke_key));
+                            PeriodicTaskResult::Continue
+                        },
+                        Duration::from_millis(100),
+                    ));
 
                     self.state = BrushState::Drawing {
                         path_builder: new_builder(
@@ -299,6 +411,10 @@ impl PenBehaviour for Brush {
             }
         };
 
+        if matches!(self.state, BrushState::Idle) {
+            self.hold = None;
+            self.hold_task = None;
+        }
         (event_result, widget_flags)
     }
 }
@@ -326,6 +442,14 @@ impl DrawableOnDoc for Brush {
     ) -> anyhow::Result<()> {
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
+        if self
+            .hold
+            .as_ref()
+            .is_some_and(|hold| hold.original.is_some())
+        {
+            cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            return Ok(());
+        }
         match &self.state {
             BrushState::Idle => {}
             BrushState::Drawing {
@@ -355,6 +479,70 @@ impl DrawableOnDoc for Brush {
 
 impl Brush {
     const INPUT_OVERSHOOT: f64 = 30.0;
+
+    pub(crate) fn recognize_hold(
+        &mut self,
+        key: StrokeKey,
+        engine_view: &mut EngineViewMut,
+    ) -> WidgetFlags {
+        let mut flags = WidgetFlags::default();
+        let BrushState::Drawing {
+            current_stroke_key, ..
+        } = &self.state
+        else {
+            return flags;
+        };
+        if *current_stroke_key != key {
+            return flags;
+        }
+        let Some(hold) = self.hold.as_mut() else {
+            return flags;
+        };
+        if hold.original.is_some()
+            || hold.attempted
+            || hold.moved_at.elapsed() < Duration::from_millis(600)
+        {
+            return flags;
+        }
+        hold.attempted = true;
+        let zoom = engine_view.camera.total_zoom();
+        let points: Vec<_> = hold
+            .points
+            .iter()
+            .map(|p| recognize::Point(p.pos.x * zoom, p.pos.y * zoom))
+            .collect();
+        let Some(clean) = recognize::recognize(&points) else {
+            return flags;
+        };
+        let pressure =
+            hold.points.iter().map(|p| p.pressure).sum::<f64>() / hold.points.len() as f64;
+        let element =
+            |p: recognize::Point| Element::new(Vector2::new(p.0 / zoom, p.1 / zoom), pressure);
+        let path = PenPath {
+            start: element(clean[0]),
+            segments: clean[1..]
+                .iter()
+                .map(|p| Segment::LineTo { end: element(*p) })
+                .collect(),
+        };
+        if let Some(Stroke::BrushStroke(stroke)) = engine_view.store.get_stroke_mut(key) {
+            hold.original = Some(stroke.path.clone());
+            stroke.replace_path(path);
+            stroke.style = engine_view
+                .config
+                .pens_config
+                .brush_config
+                .style_for_current_options();
+        }
+        engine_view.store.regenerate_rendering_for_stroke(
+            key,
+            engine_view.camera.viewport(),
+            engine_view.camera.image_scale(),
+        );
+        flags.redraw = true;
+        flags.store_modified = true;
+        flags
+    }
 
     fn get_preview_style(engine_view: &EngineView) -> Style {
         let mut style = engine_view

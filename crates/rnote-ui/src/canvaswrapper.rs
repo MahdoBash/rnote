@@ -1005,9 +1005,13 @@ impl RnCanvasWrapper {
             imp.page_indicator.set_reveal_child(false);
             return;
         };
-        let label = gettext("Page {current} of {total}")
+        // Preserve the previous indicator width even though the visible text is shorter.
+        let original_label = gettext("Page {current} of {total}")
             .replace("{current}", &current.to_string())
             .replace("{total}", &total.to_string());
+        let width = imp.page_indicator_label.create_pango_layout(Some(&original_label)).pixel_size().0;
+        imp.page_indicator_label.set_width_request(width);
+        let label = format!("{current} / {total}");
         if imp.page_indicator_label.label().as_str() != label {
             imp.page_indicator_label.set_label(&label);
         }

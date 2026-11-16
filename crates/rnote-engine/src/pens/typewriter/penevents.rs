@@ -522,6 +522,22 @@ impl Typewriter {
         let mut widget_flags = WidgetFlags::default();
         self.pos = None;
 
+        // Leave application shortcuts to GTK; otherwise Ctrl+C/B/etc. insert
+        // characters (or replace the selection) before the action can run.
+        if let KeyboardKey::Unicode(ch) = keyboard_key {
+            if modifier_keys.contains(&ModifierKey::KeyboardCtrl) && !ch.eq_ignore_ascii_case(&'a')
+            {
+                return (
+                    EventResult {
+                        handled: false,
+                        propagate: EventPropagation::Proceed,
+                        progress: PenProgress::InProgress,
+                    },
+                    widget_flags,
+                );
+            }
+        }
+
         let text_width = engine_view
             .config
             .pens_config
@@ -627,7 +643,7 @@ impl Typewriter {
                             // Handling keyboard input
                             match keyboard_key {
                                 KeyboardKey::Unicode(keychar) => {
-                                    if keychar == 'a'
+                                    if keychar.eq_ignore_ascii_case(&'a')
                                         && modifier_keys.contains(&ModifierKey::KeyboardCtrl)
                                     {
                                         cursor.set_cursor(textstroke.text.len());
@@ -902,7 +918,7 @@ impl Typewriter {
                             // Handle keyboard keys
                             let event_result = match keyboard_key {
                                 KeyboardKey::Unicode(keychar) => {
-                                    if keychar == 'a'
+                                    if keychar.eq_ignore_ascii_case(&'a')
                                         && modifier_keys.contains(&ModifierKey::KeyboardCtrl)
                                     {
                                         textstroke

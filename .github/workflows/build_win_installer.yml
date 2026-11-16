@@ -81,6 +81,8 @@ jobs:
           ./page-indicator-tests.exe
           rustc --edition 2024 --test build-aux/touch-coast-tests.rs -o touch-coast-tests.exe
           ./touch-coast-tests.exe
+          rustc --edition 2024 --test crates/rnote-engine/src/pens/brush/recognize.rs -o shape-recognition-tests.exe
+          ./shape-recognition-tests.exe
           rustc --edition 2024 -L native="$(cygpath -m /ucrt64/lib)" --test build-aux/screen-picker-tests.rs -o screen-picker-tests.exe
           ./screen-picker-tests.exe --test-threads=1
 

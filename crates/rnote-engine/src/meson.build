@@ -30,6 +30,7 @@ rnote_engine_sources = files(
     'image.rs',
     'lib.rs',
     'pens/brush.rs',
+    'pens/brush/recognize.rs',
     'pens/eraser.rs',
     'pens/mod.rs',
     'pens/penbehaviour.rs',
