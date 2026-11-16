@@ -91,6 +91,11 @@ foreach($mode in @('reference','canvas','expanding','disabled','drawing')) {
  if([Math]::Abs($paused) -gt 2){throw "Pause before release should prevent momentum in $mode"}
  $stopped=(PositionAt ([long]::MaxValue))-(PositionAt ($begins[3].T+40))
  if([Math]::Abs($stopped) -gt 2){throw "Touch did not stop momentum in $mode"}
+ if($mode -eq 'expanding') {
+  $armed=[double]((Select-String -Path $log -Pattern 'SCROLL ARMED_HEIGHT ([\d.]+)'|Select-Object -First 1).Matches.Groups[1].Value)
+  $finalHeight=[double]((Select-String -Path $log -Pattern 'SCROLL HEIGHT ([\d.]+)'|Select-Object -Last 1).Matches.Groups[1].Value)
+  if($finalHeight -le $armed+100){throw 'Expansion test did not cross a growth boundary'}
+ }
  Write-Output "PASS ${mode}: coast=$distance px; pause=$paused px; stop=$stopped px"
 }
 Remove-Item Env:RNOTE_SCROLL_TEST,Env:RNOTE_SCROLL_TRACE

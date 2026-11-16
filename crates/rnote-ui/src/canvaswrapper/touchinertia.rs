@@ -113,10 +113,11 @@ impl Controller {
                 let kinetic = scroller.is_kinetic_scrolling();
                 scroller.set_kinetic_scrolling(false);
                 scroller.set_kinetic_scrolling(kinetic);
-                let Some(mut coast) = coast else {
+                let Some(coast) = coast else {
                     return;
                 };
-                let mut last_time = glib::monotonic_time();
+                let coast = RefCell::new(coast);
+                let last_time = Cell::new(glib::monotonic_time());
                 let state = Rc::downgrade(&owner.state);
                 let tick_slot = Rc::downgrade(&owner.tick);
                 let tick = wrapper.add_tick_callback(move |wrapper, clock| {
@@ -124,8 +125,8 @@ impl Controller {
                         return glib::ControlFlow::Break;
                     };
                     let now = clock.frame_time();
-                    let dt = (now - last_time).max(0) as f64 / 1_000_000.0;
-                    last_time = now;
+                    let dt = (now - last_time.get()).max(0) as f64 / 1_000_000.0;
+                    last_time.set(now);
                     let active = wrapper
                         .root()
                         .and_downcast::<gtk4::Window>()
@@ -137,7 +138,7 @@ impl Controller {
                         && !wrapper.canvas().touch_drawing()
                         && dt < 0.25
                     {
-                        coast.step(dt)
+                        coast.borrow_mut().step(dt)
                     } else {
                         None
                     };
@@ -155,10 +156,10 @@ impl Controller {
                     let after = canvas.engine_ref().camera.offset();
                     // Clamp through the engine; stop only the blocked axis.
                     if x.abs() > 0.001 && (after.x - before.x - x).abs() > 0.5 {
-                        coast.stop_axis(0);
+                        coast.borrow_mut().stop_axis(0);
                     }
                     if y.abs() > 0.001 && (after.y - before.y - y).abs() > 0.5 {
-                        coast.stop_axis(1);
+                        coast.borrow_mut().stop_axis(1);
                     }
                     canvas.emit_handle_widget_flags(flags);
                     glib::ControlFlow::Continue

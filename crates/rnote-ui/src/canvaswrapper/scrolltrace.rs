@@ -60,7 +60,21 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
         let start = Instant::now();
         let events = gtk4::EventControllerLegacy::new();
         events.set_propagation_phase(PropagationPhase::Capture);
+        let test_canvas = wrapper.canvas().downgrade();
+        let expansion_armed = Cell::new(false);
         events.connect_event(move |_, event| {
+            if mode == "expanding" && event.event_type() == gdk::EventType::TouchEnd && !expansion_armed.replace(true) {
+                if let Some(canvas) = test_canvas.upgrade() {
+                    // Put the growth threshold 20 px beyond the release position:
+                    // the coast must cross it without losing its velocity.
+                    let mut engine = canvas.engine_mut();
+                    engine.document.height = engine.camera.viewport().maxs.y
+                        + 2.0 * engine.document.config.format.height() + 20.0 - engine.document.y;
+                    eprintln!("SCROLL ARMED_HEIGHT {:.3}", engine.document.height);
+                    drop(engine);
+                    canvas.queue_resize();
+                }
+            }
             if matches!(
                 event.event_type(),
                 gdk::EventType::TouchBegin
@@ -81,7 +95,12 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
         scroller.add_controller(events);
         let canvas = (!reference).then(|| wrapper.canvas().downgrade());
         let last = Cell::new((f64::NAN, f64::NAN, false));
+        let last_height = Cell::new(f64::NAN);
         scroller.add_tick_callback(move |s, _| {
+            if let Some(c) = canvas.as_ref().and_then(|c| c.upgrade()) {
+                let height = c.engine_ref().document.height;
+                if height != last_height.replace(height) { eprintln!("SCROLL HEIGHT {:.3}", height); }
+            }
             let position = canvas
                 .as_ref()
                 .and_then(|c| c.upgrade())
