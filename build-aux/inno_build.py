@@ -75,15 +75,14 @@ for angle_dll in itertools.chain(
         f"Collecting angle dependency ({angle_dll}) DLLs failed",
     )
 
-# add libcrypto-3-x64.dll and libssl-3-x64.dll
-run_command(
-    f"cp {build_environment_path}/bin/libcrypto-3-x64.dll {dlls_dir}",
-    "Collecting libcrypto-3-x64.dll failed",
-)
-run_command(
-    f"cp {build_environment_path}/bin/libssl-3-x64.dll {dlls_dir}",
-    "Collecting libssl-3-x64.dll failed",
-)
+# OpenSSL is an explicit packaging prerequisite. Preserve the names supplied
+# by MSYS2 instead of assuming one version-specific DLL suffix.
+for library in ("libcrypto", "libssl"):
+    matches = glob.glob(f"{build_environment_path}/bin/{library}*.dll")
+    if not matches:
+        raise RuntimeError(f"Missing required OpenSSL runtime: {library}")
+    for dll in matches:
+        run_command(f'cp "{dll}" "{dlls_dir}"', f"Collecting {dll} failed")
 
 # Collect necessary GSchema Xml's and compile them into a `gschemas.compiled`
 print("Collecting and compiling GSchemas...", file=sys.stderr)

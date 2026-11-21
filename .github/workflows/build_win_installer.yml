@@ -74,6 +74,7 @@ jobs:
       - name: Prerequisites
         run: |
           just ci=true prerequisites-win
+          pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-openssl
 
       - name: Test page navigation and native Windows UI
         run: |
