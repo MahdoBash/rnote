@@ -1,0 +1,29 @@
+name: Check gesture geometry
+on:
+  push:
+    branches: [codex/verify-snap-and-hold]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Exercise brush recognition and rotation
+        run: |
+          rustc --edition 2024 --test crates/rnote-engine/src/pens/brush/recognize.rs -o /tmp/recognize
+          /tmp/recognize
+          rustc --edition 2024 --test crates/rnote-ui/src/canvaswrapper/rotationsnap.rs -o /tmp/rotation
+          /tmp/rotation
+      - name: Format the geometry modules
+        if: always()
+        run: |
+          mkdir formatted
+          for path in crates/rnote-engine/src/pens/brush/recognize.rs crates/rnote-ui/src/canvaswrapper/rotationsnap.rs; do
+            rustfmt --edition 2024 --emit stdout "$path" | sed -e '1{/^.*\.rs:$/d;}' > "formatted/$(basename "$path")"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: formatted-geometry
+          path: formatted/*.rs
