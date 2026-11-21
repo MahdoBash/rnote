@@ -188,7 +188,7 @@ fn has_straight_sides(ring: &[Point], diagonal: f64) -> bool {
     distinct && covered.iter().filter(|&&hit| hit).count()*2 >= n
 }
 
-fn polygon(samples: &[Point], diagonal: f64) -> Option<Vec<Point>> {
+fn polygon(samples: &[Point], diagonal: f64, outline_length: f64) -> Option<Vec<Point>> {
     let first = samples[0];
     let mut p = samples.to_vec();
     // A small overshoot at the pen-down point otherwise looks like another side.
@@ -249,8 +249,7 @@ fn polygon(samples: &[Point], diagonal: f64) -> Option<Vec<Point>> {
             }
         }
     }
-    let length: f64 = p.windows(2).map(|w| w[0].distance(w[1])).sum();
-    if signed_area.abs() < 0.06 * diagonal * diagonal || length > 1.20 * perimeter {
+    if signed_area.abs() < 0.06 * diagonal * diagonal || outline_length > 1.20 * perimeter {
         return None;
     }
     let winding = signed_area;
@@ -367,7 +366,7 @@ pub fn recognize(input: &[Point]) -> Option<Vec<Point>> {
     let ring = &outline[..128];
     // Keep real corner samples when available. Resampling before corner detection
     // can replace one vertex with two points on opposite sides of the corner.
-    let corners = polygon(if input.len() <= 512 { input } else { &uniform }, diagonal);
+    let corners = polygon(if input.len() <= 512 { input } else { &uniform }, diagonal, length + chord);
     let curved = ellipse(ring);
     match (corners,curved) {
         (Some(poly),Some(oval)) => {
