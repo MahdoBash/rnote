@@ -175,10 +175,10 @@ fn has_straight_sides(ring: &[Point], diagonal: f64) -> bool {
     let mut distinct = false;
     for i in 0..n {
         let a = ring[i];
-        let Some(span) = (2..n/2).find(|&j| a.distance(ring[(i+j)%n]) >= diagonal*0.23) else { continue };
+        let Some(span) = (2..n/2).find(|&j| a.distance(ring[(i+j)%n]) >= diagonal*0.24) else { continue };
         let b = ring[(i+span)%n];
-        let error: f64 = (1..span).map(|j| line_distance(ring[(i+j)%n],a,b).powi(2)).sum();
-        if (error/(span-1) as f64).sqrt() > (diagonal*0.008).max(0.4) { continue; }
+        let limit = (diagonal*0.009).max(0.50);
+        if (1..span).any(|j| line_distance(ring[(i+j)%n],a,b) > limit) { continue; }
         for j in 0..=span { covered[(i+j)%n] = true; }
         let len = a.distance(b);
         let axis = Point((b.0-a.0)/len,(b.1-a.1)/len);
@@ -370,7 +370,7 @@ pub fn recognize(input: &[Point]) -> Option<Vec<Point>> {
     let curved = ellipse(ring);
     match (corners,curved) {
         (Some(poly),Some(oval)) => {
-            if poly.len() <= 5 || has_straight_sides(ring,diagonal) { Some(poly) } else { Some(oval) }
+            if poly.len() <= 5 || has_straight_sides(&uniform[..160],diagonal) { Some(poly) } else { Some(oval) }
         }
         (poly,oval) => poly.or(oval),
     }

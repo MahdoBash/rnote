@@ -16,6 +16,7 @@ jobs:
           rustc --edition 2024 --test crates/rnote-ui/src/canvaswrapper/rotationsnap.rs -o /tmp/rotation
           /tmp/rotation
       - name: Compare the new and previous recognizers on varied pen traces
+        if: always()
         run: |
           git fetch --depth=1 origin e0607d3eac9ee815961febac749627521ec859c8
           git show FETCH_HEAD:crates/rnote-engine/src/pens/brush/recognize.rs > build-aux/old-recognize.rs
