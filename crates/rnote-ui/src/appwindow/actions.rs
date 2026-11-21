@@ -680,9 +680,14 @@ impl RnAppWindow {
 
                 let canvas = wrapper.canvas();
                 let viewport_center = canvas.engine_ref().camera.viewport_center();
+                let page_width = {
+                    let engine = canvas.engine_ref();
+                    let format = &engine.document.config.format;
+                    let (sin, cos) = engine.camera.rotation().sin_cos();
+                    format.width() * cos.abs() + format.height() * sin.abs()
+                };
                 let new_zoom = f64::from(wrapper.scroller().width())
-                    / (wrapper.canvas().engine_ref().document.config.format.width()
-                        + 2.0 * Camera::OVERSHOOT_HORIZONTAL);
+                    / (page_width + 2.0 * Camera::OVERSHOOT_HORIZONTAL);
                 let mut widget_flags = canvas.engine_mut().zoom_w_timeout(new_zoom);
                 widget_flags |= canvas
                     .engine_mut()

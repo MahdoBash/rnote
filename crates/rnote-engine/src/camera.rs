@@ -7,7 +7,7 @@ use crate::{Document, WidgetFlags};
 use p2d::bounding_volume::Aabb;
 use p2d::glamx::DAffine2;
 use p2d::math::Vector2;
-use rnote_compose::ext::AabbExt;
+use rnote_compose::ext::{AabbExt, DAffine2Ext};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::error;
@@ -36,6 +36,9 @@ pub struct Camera {
     /// The camera zoom, origin at (0.0, 0.0).
     #[serde(rename = "zoom")]
     zoom: f64,
+    /// Clockwise view rotation in radians. Document geometry stays in page coordinates.
+    #[serde(rename = "rotation")]
+    rotation: f64,
     /// The temporary zoom. Is used to overlay the "permanent" zoom.
     #[serde(skip)]
     temporary_zoom: f64,
@@ -56,6 +59,7 @@ impl Default for Camera {
             offset: Vector2::new(-Self::OVERSHOOT_HORIZONTAL, -Self::OVERSHOOT_VERTICAL),
             size: Vector2::new(800.0, 600.0),
             zoom: 1.0,
+            rotation: 0.0,
             temporary_zoom: 1.0,
             scale_factor: 1.0,
             zoom_task_handle: None,
@@ -69,6 +73,7 @@ impl Snapshotable for Camera {
             offset: self.offset,
             size: self.size,
             zoom: self.zoom,
+            rotation: self.rotation,
             ..Default::default()
         }
     }
@@ -149,10 +154,15 @@ impl Camera {
             Layout::Infinite => (doc.y * total_zoom, (doc.y + doc.height) * total_zoom),
         };
 
-        (
-            Vector2::new(h_lower, v_lower),
-            Vector2::new(h_upper, v_upper),
-        )
+        let mins = Vector2::new(h_lower, v_lower);
+        let maxs = Vector2::new(h_upper, v_upper);
+        if self.rotation == 0.0 {
+            return (mins, maxs);
+        }
+        let bounds = DAffine2::from_angle(self.rotation).transform_aabb(Aabb::new(mins, maxs));
+        // Allow the page corners to reach the viewport center, including when
+        // the projected page is narrower than the window.
+        (bounds.mins - self.size * 0.5, bounds.maxs + self.size * 0.5)
     }
 
     /// The current viewport size in surface coordinate space.
@@ -260,17 +270,12 @@ impl Camera {
 
     /// The viewport in document coordinate space.
     pub fn viewport(&self) -> Aabb {
-        let total_zoom = self.total_zoom();
-
-        Aabb::new_positive(
-            self.offset / total_zoom,
-            (self.offset + self.size) / total_zoom,
-        )
+        self.transform_inv_bounds(Aabb::new(Vector2::ZERO, self.size))
     }
 
     /// The current viewport center in document coordinate space.
     pub fn viewport_center(&self) -> Vector2 {
-        (self.offset + self.size * 0.5) / self.total_zoom()
+        self.transform().inverse().transform_point2(self.size * 0.5)
     }
 
     /// Set the viewport center.
@@ -278,27 +283,57 @@ impl Camera {
     /// `center` must be in document coordinate space.
     pub fn set_viewport_center(&mut self, center: Vector2) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
-        self.offset = center * self.total_zoom() - self.size * 0.5;
+        self.offset = self.offset_for_anchor(center, self.size * 0.5);
         widget_flags.view_modified = true;
         widget_flags
     }
 
     /// Transform Aabb from document coords to surface coords.
     pub fn transform_bounds(&self, bounds: Aabb) -> Aabb {
-        bounds.scale(self.total_zoom()).translate(-self.offset)
+        self.transform().transform_aabb(bounds)
     }
 
     /// Transform Aabb from surface coords to document coords.
     pub fn transform_inv_bounds(&self, bounds: Aabb) -> Aabb {
-        bounds.translate(self.offset).scale(1.0 / self.total_zoom())
+        self.transform().inverse().transform_aabb(bounds)
+    }
+
+    pub fn rotation(&self) -> f64 {
+        self.rotation
+    }
+
+    /// Surface offset that places a document point at a given position on screen.
+    pub fn offset_for_anchor(&self, document: Vector2, surface: Vector2) -> Vector2 {
+        self.transform().transform_vector2(document) - surface
+    }
+
+    /// Change the view around a stationary point (or the midpoint of a pinch).
+    pub fn rotate_about(
+        &mut self,
+        radians: f64,
+        document: Vector2,
+        surface: Vector2,
+    ) -> WidgetFlags {
+        if !radians.is_finite() {
+            return WidgetFlags::default();
+        }
+        self.rotation = (radians + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+            - std::f64::consts::PI;
+        self.offset = self.offset_for_anchor(document, surface);
+        WidgetFlags {
+            view_modified: true,
+            redraw: true,
+            ..Default::default()
+        }
     }
 
     /// The transform from document coords to surface coords.
     ///
     /// To get the inverse, call `.inverse()`.
     pub fn transform(&self) -> DAffine2 {
-        // LHS is applied onto RHS, so the order is scaling by zoom -> Translation by offset
+        // Scale and rotate the page first, then pan in screen coordinates.
         DAffine2::from_translation(-self.offset)
+            * DAffine2::from_angle(self.rotation)
             * DAffine2::from_scale(Vector2::splat(self.total_zoom()))
     }
 
@@ -316,17 +351,19 @@ impl Camera {
                 -self.offset[0] as f32,
                 -self.offset[1] as f32,
             ))
+            .rotate(self.rotation.to_degrees() as f32)
             .scale(total_zoom as f32, total_zoom as f32)
     }
 
     /// Detects if a nudge is needed, meaning: the position is close to an edge of the current viewport.
     pub fn detect_nudge_needed(&self, pos: Vector2) -> Option<NudgeDirection> {
         const NUDGE_VIEWPORT_DIST: f64 = 10.0;
-        let viewport = self.viewport();
-        let nudge_north = pos[1] <= viewport.mins[1] + NUDGE_VIEWPORT_DIST;
-        let nudge_east = pos[0] >= viewport.maxs[0] - NUDGE_VIEWPORT_DIST;
-        let nudge_south = pos[1] >= viewport.maxs[1] - NUDGE_VIEWPORT_DIST;
-        let nudge_west = pos[0] <= viewport.mins[0] + NUDGE_VIEWPORT_DIST;
+        let surface = self.transform().transform_point2(pos);
+        let margin = NUDGE_VIEWPORT_DIST * self.total_zoom();
+        let nudge_north = surface.y <= margin;
+        let nudge_east = surface.x >= self.size.x - margin;
+        let nudge_south = surface.y >= self.size.y - margin;
+        let nudge_west = surface.x <= margin;
 
         match (nudge_north, nudge_east, nudge_south, nudge_west) {
             (true, false, _, false) => Some(NudgeDirection::North),
@@ -393,6 +430,60 @@ mod tests {
             camera.transform().transform_point2(p0),
             (p0 * zoom) - offset
         );
+    }
+
+    #[test]
+    fn rotated_view_keeps_touch_anchor_and_all_four_screen_corners() {
+        let size = Vector2::new(970., 650.);
+        let pivot = Vector2::new(275., 183.);
+        let mut camera = Camera::default()
+            .with_zoom(1.6)
+            .with_offset(Vector2::new(120., 950.))
+            .with_size(size);
+        let anchor = camera.transform().inverse().transform_point2(pivot);
+        for degrees in [23.0_f64, 90., 170., -145., -90., 0.] {
+            camera.rotate_about(degrees.to_radians(), anchor, pivot);
+            assert_relative_eq!(
+                camera.transform().transform_point2(anchor),
+                pivot,
+                epsilon = 1e-8
+            );
+            for surface in [
+                Vector2::ZERO,
+                size,
+                Vector2::new(size.x, 0.),
+                Vector2::new(0., size.y),
+            ] {
+                let document = camera.transform().inverse().transform_point2(surface);
+                let viewport = camera.viewport();
+                assert!(
+                    document.x >= viewport.mins.x - 1e-8 && document.x <= viewport.maxs.x + 1e-8
+                );
+                assert!(
+                    document.y >= viewport.mins.y - 1e-8 && document.y <= viewport.maxs.y + 1e-8
+                );
+                assert_relative_eq!(
+                    camera.transform().transform_point2(document),
+                    surface,
+                    epsilon = 1e-8
+                );
+            }
+            let doc_center = Vector2::new(480., 1200.);
+            camera.set_viewport_center(doc_center);
+            assert_relative_eq!(camera.viewport_center(), doc_center, epsilon = 1e-8);
+            assert_relative_eq!(
+                camera.extract_snapshot_data().viewport_center(),
+                doc_center,
+                epsilon = 1e-8
+            );
+        }
+    }
+
+    #[test]
+    fn older_document_camera_opens_upright() {
+        let camera: Camera = serde_json::from_str(r#"{"zoom":1.5}"#).unwrap();
+        assert_eq!(camera.rotation(), 0.0);
+        assert_eq!(camera.zoom(), 1.5);
     }
 
     #[test]

@@ -258,7 +258,8 @@ impl Composer<SmoothOptions> for PenPath {
         cx.save().unwrap();
 
         for seg in self.segments.iter() {
-            if seg.end().pos == self.start.pos {
+            // A return to the first point closes a shape; only skip stationary segments.
+            if seg.end().pos == prev.pos {
                 continue;
             } else {
                 single_pos = false;

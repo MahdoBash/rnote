@@ -57,6 +57,33 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
             }
             wrapper.scroller()
         };
+        if mode == "rotation" {
+            // Observe the real gesture handlers after they have applied the view.
+            let pivot = Rc::new(Cell::new(None::<Vector2>));
+            let canvas = wrapper.canvas();
+            wrapper.imp().canvas_zoom_gesture.connect_begin(glib::clone!(
+                #[strong] pivot, #[weak] canvas, move |gesture, _| {
+                    pivot.set(gesture.bounding_box_center().map(|(x, y)|
+                        canvas.engine_ref().camera.transform().inverse().transform_point2(Vector2::new(x, y))));
+                }
+            ));
+            wrapper.imp().canvas_rotate_gesture.connect_angle_changed(glib::clone!(
+                #[strong] pivot, #[weak] canvas, move |gesture, _, _| {
+                    if let (Some(anchor), Some((x, y))) = (pivot.get(), gesture.bounding_box_center()) {
+                        let engine = canvas.engine_ref();
+                        let drift = engine.camera.transform().transform_point2(anchor).distance(Vector2::new(x, y));
+                        eprintln!("ROTATION SAMPLE {:.3} {:.3} {:.3}", engine.camera.rotation().to_degrees(),
+                            engine.camera.total_zoom(), drift);
+                    }
+                }
+            ));
+            wrapper.imp().canvas_zoom_gesture.connect_end(glib::clone!(
+                #[weak] canvas, move |_, _| {
+                    let engine = canvas.engine_ref();
+                    eprintln!("ROTATION END {:.3} {:.3}", engine.camera.rotation().to_degrees(), engine.camera.total_zoom());
+                }
+            ));
+        }
         let start = Instant::now();
         let events = gtk4::EventControllerLegacy::new();
         events.set_propagation_phase(PropagationPhase::Capture);

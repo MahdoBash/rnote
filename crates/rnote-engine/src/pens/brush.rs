@@ -585,3 +585,74 @@ fn new_builder(
         PenPathBuilderType::Modeled => Box::new(PenPathModeledBuilder::start(element, now)),
     }
 }
+
+#[cfg(test)]
+mod held_shape_render_tests {
+    use super::*;
+    use crate::Image;
+    use rnote_compose::style::{Composer, textured::TexturedOptions};
+
+    #[test]
+    fn recognized_rectangle_renders_all_four_sides() {
+        use recognize::Point;
+        // Feed a rectangle with rounded-off corners and a small closure gap,
+        // then rasterize the exact path representation used when holding the pen.
+        let corners = [
+            Point(18., 18.),
+            Point(104., 20.),
+            Point(102., 82.),
+            Point(17., 80.),
+            Point(19., 21.),
+        ];
+        let trace: Vec<_> = corners
+            .windows(2)
+            .flat_map(|w| {
+                (0..24).map(move |i| {
+                    let f = i as f64 / 24.;
+                    Point(
+                        w[0].0 + f * (w[1].0 - w[0].0),
+                        w[0].1 + f * (w[1].1 - w[0].1),
+                    )
+                })
+            })
+            .chain(corners.last().copied())
+            .collect();
+        let outline = recognize::recognize(&trace).unwrap();
+        assert_eq!(outline.len(), 5);
+        assert_eq!(outline.first(), outline.last());
+        let element = |point: Point| Element::new(Vector2::new(point.0, point.1), 0.8);
+        let path = PenPath::new_w_segments(
+            element(outline[0]),
+            outline[1..]
+                .iter()
+                .map(|&p| Segment::LineTo { end: element(p) }),
+        );
+        for style in [
+            Style::default(),
+            Style::Textured(TexturedOptions {
+                seed: Some(1),
+                ..Default::default()
+            }),
+        ] {
+            let image = Image::gen_with_piet(
+                |cx| {
+                    path.draw_composed(cx, &style);
+                    Ok(())
+                },
+                Aabb::new(Vector2::ZERO, Vector2::new(124., 104.)),
+                1.,
+            )
+            .unwrap();
+            let stride = image.pixel_width as usize;
+            for edge in outline.windows(2) {
+                let x = ((edge[0].0 + edge[1].0) * 0.5).round() as usize + 1;
+                let y = ((edge[0].1 + edge[1].1) * 0.5).round() as usize + 1;
+                assert!(
+                    (y - 4..=y + 4).any(|row| (x - 4..=x + 4)
+                        .any(|col| image.data[(row * stride + col) * 4 + 3] > 0)),
+                    "Missing rectangle edge at ({x},{y}) with {style:?}"
+                );
+            }
+        }
+    }
+}

@@ -125,6 +125,41 @@
             </object>
           </child>
           <child>
+            <object class="GtkBox">
+              <property name="spacing">6</property>
+              <child>
+                <object class="GtkLabel">
+                  <property name="label" translatable="yes">Canvas rotation (°)</property>
+                  <property name="mnemonic-widget">rotation_spin</property>
+                  <property name="hexpand">true</property>
+                  <property name="xalign">0</property>
+                </object>
+              </child>
+              <child>
+                <object class="GtkSpinButton" id="rotation_spin">
+                  <property name="numeric">true</property>
+                  <property name="wrap">true</property>
+                  <property name="width-chars">4</property>
+                  <property name="tooltip-text" translatable="yes">Rotate the view in degrees, or twist with two fingers on the canvas</property>
+                  <property name="adjustment">
+                    <object class="GtkAdjustment">
+                      <property name="lower">-180</property>
+                      <property name="upper">180</property>
+                      <property name="step-increment">15</property>
+                      <property name="page-increment">45</property>
+                    </object>
+                  </property>
+                </object>
+              </child>
+              <child>
+                <object class="GtkButton" id="rotation_reset_button">
+                  <property name="icon-name">reset-state-symbolic</property>
+                  <property name="tooltip-text" translatable="yes">Reset canvas rotation to upright</property>
+                </object>
+              </child>
+            </object>
+          </child>
+          <child>
             <object class="GtkBox" id="fixedsize_quickactions_box">
               <property name="orientation">horizontal</property>
               <property name="spacing">6</property>

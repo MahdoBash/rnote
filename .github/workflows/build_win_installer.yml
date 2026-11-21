@@ -98,6 +98,8 @@ jobs:
           export CARGO_HOME="$(pwd)/_mesonbuild/cargo-home"
           cargo test --target-dir _mesonbuild/target -p piet-cairo --lib rnote_alignment -- --test-threads=1
           cargo test --target-dir _mesonbuild/target -p rnote-engine --lib formatting_regression_tests -- --test-threads=1
+          cargo test --target-dir _mesonbuild/target -p rnote-engine --lib camera::tests -- --test-threads=1
+          cargo test --target-dir _mesonbuild/target -p rnote-engine --lib held_shape_render_tests -- --test-threads=1
 
       - name: Save Rust build cache
         if: always()

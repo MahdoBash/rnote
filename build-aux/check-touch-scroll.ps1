@@ -21,11 +21,26 @@ public static class TouchScrollTest {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls,string title);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd,out Rect rect);
  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int height,uint flags);
- static void Send(int x,int y,uint flags) {
-  var t=new Touch(); t.Pointer.Type=2;t.Pointer.Id=1;t.Pointer.Flags=flags;
+ static Touch Contact(uint id,int x,int y,uint flags) {
+  var t=new Touch(); t.Pointer.Type=2;t.Pointer.Id=id;t.Pointer.Flags=flags;
   t.Pointer.Pixel=new Point { X=x,Y=y };t.Mask=7;
   t.Contact=new Rect{L=x-2,T=y-2,R=x+2,B=y+2};t.Orientation=90;t.Pressure=512;
-  if(!InjectTouchInput(1,new[]{t})) throw new Exception("InjectTouchInput: "+Marshal.GetLastWin32Error());
+  return t;
+ }
+ static void Send(int x,int y,uint flags) {
+  if(!InjectTouchInput(1,new[]{Contact(1,x,y,flags)})) throw new Exception("InjectTouchInput: "+Marshal.GetLastWin32Error());
+ }
+ public static void Twist(int cx,int cy,double startRadius,double endRadius,double degrees) {
+  for(int i=0;i<=25;i++){
+   double f=Math.Min(i,24)/24.0;
+   double radius=startRadius+(endRadius-startRadius)*f;
+   int dx=(int)Math.Round(radius*Math.Cos(degrees*Math.PI*f/180));
+   int dy=(int)Math.Round(radius*Math.Sin(degrees*Math.PI*f/180));
+   uint flags=i==0?0x10006u:i==25?0x40000u:0x20006u;
+   var pair=new[]{Contact(1,cx-dx,cy-dy,flags),Contact(2,cx+dx,cy+dy,flags)};
+   if(!InjectTouchInput(2,pair)) throw new Exception("Two-finger injection: "+Marshal.GetLastWin32Error());
+   Thread.Sleep(20);
+  }
  }
  public static void Init() { if(!InitializeTouchInjection(2,3)) throw new Exception("InitializeTouchInjection: "+Marshal.GetLastWin32Error()); }
  public static void Swipe(int x,int y,int distance,int delay,int pause) {
@@ -40,6 +55,36 @@ public static class TouchScrollTest {
 [TouchScrollTest]::Init()
 $env:GSK_RENDERER='cairo'
 $env:RNOTE_SCROLL_TRACE='1'
+# Exercise the installed GTK app with two simultaneous Windows touch contacts.
+$env:RNOTE_SCROLL_TEST='rotation'
+$rotationLog=Join-Path $pwd 'scroll-rotation.txt'
+$app=Start-Process $Executable -PassThru -RedirectStandardError $rotationLog
+try {
+ Start-Sleep -Seconds 7
+ $app.Refresh()
+ if($app.HasExited -or !$app.MainWindowHandle){throw 'Missing rotation test window'}
+ [void][TouchScrollTest]::SetWindowPos($app.MainWindowHandle,[IntPtr]::Zero,50,50,1000,700,0x40)
+ [void][TouchScrollTest]::SetForegroundWindow($app.MainWindowHandle)
+ Start-Sleep -Seconds 1
+ [TouchScrollTest]::Twist(600,410,75,96,65)
+ Start-Sleep -Milliseconds 750
+ [TouchScrollTest]::Twist(600,410,96,75,-65)
+ Start-Sleep -Seconds 1
+} finally { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
+$results=@(Select-String -Path $rotationLog -Pattern 'ROTATION END ([-.0-9]+) ([-.0-9]+)')
+if($results.Count -ne 2){Get-Content $rotationLog;throw 'Expected two twist gestures'}
+$angle=[double]$results[0].Matches.Groups[1].Value
+$firstZoom=[double]$results[0].Matches.Groups[2].Value
+$finalAngle=[double]$results[1].Matches.Groups[1].Value
+$finalZoom=[double]$results[1].Matches.Groups[2].Value
+if([Math]::Abs($angle-65) -gt 3 -or [Math]::Abs($finalAngle) -gt 3 -or
+   [Math]::Abs($firstZoom/$finalZoom-96/75) -gt 0.05){throw "Pinch/twist mismatch: $angle, $firstZoom; $finalAngle, $finalZoom"}
+$samples=@(Select-String -Path $rotationLog -Pattern 'ROTATION SAMPLE ([-.0-9]+) ([-.0-9]+) ([-.0-9]+)')
+if($samples.Count -lt 10){throw 'Missing continuous rotation samples'}
+$drift=($samples|ForEach-Object {[double]$_.Matches.Groups[3].Value}|Measure-Object -Maximum).Maximum
+if($drift -gt 4){throw "Rotation pivot drifted by $drift pixels"}
+Write-Output "PASS two-finger rotation and pinch, angle=$angle, reset=$finalAngle, max pivot drift=$drift"
+
 foreach($mode in @('reference','canvas','expanding','disabled','drawing')) {
  $env:RNOTE_SCROLL_TEST=$mode
  $log=Join-Path $pwd "scroll-$mode.txt"

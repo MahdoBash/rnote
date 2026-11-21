@@ -28,6 +28,11 @@ mod imp {
         pub(crate) zoom_fit_width_button: TemplateChild<Button>,
         #[template_child]
         pub(crate) zoom_real_width_button: TemplateChild<Button>,
+        pub(crate) syncing_rotation: std::cell::Cell<bool>,
+        #[template_child]
+        pub(crate) rotation_spin: TemplateChild<gtk4::SpinButton>,
+        #[template_child]
+        pub(crate) rotation_reset_button: TemplateChild<Button>,
         #[template_child]
         pub(crate) fixedsize_quickactions_box: TemplateChild<gtk4::Box>,
     }
@@ -97,7 +102,50 @@ impl RnCanvasMenu {
         self.imp().fixedsize_quickactions_box.get()
     }
 
-    pub(crate) fn init(&self, _appwindow: &RnAppWindow) {
+    pub(crate) fn init(&self, appwindow: &RnAppWindow) {
+        self.imp().popovermenu.connect_show(glib::clone!(
+            #[weak(rename_to=menu)]
+            self,
+            #[weak]
+            appwindow,
+            move |_| {
+                if let Some(canvas) = appwindow.active_tab_canvas() {
+                    let angle = canvas.engine_ref().camera.rotation().to_degrees();
+                    menu.imp().syncing_rotation.set(true);
+                    menu.imp().rotation_spin.set_value(angle);
+                    menu.imp().syncing_rotation.set(false);
+                }
+            }
+        ));
+        self.imp().rotation_spin.connect_value_changed(glib::clone!(
+            #[weak(rename_to=menu)]
+            self,
+            #[weak]
+            appwindow,
+            move |spin| {
+                if menu.imp().syncing_rotation.get() {
+                    return;
+                }
+                if let Some(canvas) = appwindow.active_tab_canvas() {
+                    let mut engine = canvas.engine_mut();
+                    let center = engine.camera.viewport_center();
+                    let pivot = engine.camera.size() * 0.5;
+                    let flags =
+                        engine
+                            .camera
+                            .rotate_about(spin.value().to_radians(), center, pivot);
+                    drop(engine);
+                    canvas.emit_handle_widget_flags(flags);
+                }
+            }
+        ));
+        self.imp()
+            .rotation_reset_button
+            .connect_clicked(glib::clone!(
+                #[weak(rename_to=menu)]
+                self,
+                move |_| menu.imp().rotation_spin.set_value(0.0)
+            ));
         self.imp()
             .zoom_reset_button
             .set_label(format!("{:.0}%", (100.0 * Camera::ZOOM_DEFAULT).round()).as_str());

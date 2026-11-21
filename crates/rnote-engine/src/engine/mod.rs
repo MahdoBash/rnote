@@ -617,6 +617,11 @@ impl Engine {
     }
 
     pub fn return_to_origin(&mut self, parent_width: Option<f64>) -> WidgetFlags {
+        if self.camera.rotation() != 0.0 {
+            let page_center = self.document.config.format.size() * 0.5;
+            let offset = self.camera.offset_for_anchor(page_center, self.camera.size() * 0.5);
+            return self.camera_set_offset_expand(offset);
+        }
         let zoom = self.camera.zoom();
         let new_offset = if let Some(parent_width) = parent_width {
             if self.document.config.format.width() * zoom <= parent_width {

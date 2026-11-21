@@ -271,5 +271,3 @@ toast {
 .brush-style-choice:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
 .brush-style-choice:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
 .brush-style-choice:checked { background-color: alpha(var(--accent-color), 0.22); color: var(--window-fg-color); }
-
-.page-indicator > button label { font-size: 20px; }
