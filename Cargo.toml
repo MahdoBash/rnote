@@ -6,6 +6,7 @@ members = [
     "crates/rnote-ui",
 ]
 resolver = "2"
+exclude = ["vendor/piet-cairo"]
 
 [workspace.package]
 authors = ["The Rnote Authors"]
@@ -100,7 +101,7 @@ xmlwriter = "0.1.0"
 
 [patch.crates-io]
 piet = { git = "https://github.com/linebender/piet", rev = "22210f03b8a2b203e2ad5ba9b600ed17f4a9407a" }
-piet-cairo = { git = "https://github.com/linebender/piet", rev = "22210f03b8a2b203e2ad5ba9b600ed17f4a9407a" }
+piet-cairo = { path = "vendor/piet-cairo" }
 
 [profile.dev]
 debug = true

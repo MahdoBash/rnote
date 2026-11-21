@@ -3460,7 +3460,6 @@ dependencies = [
 [[package]]
 name = "piet-cairo"
 version = "0.8.0"
-source = "git+https://github.com/linebender/piet?rev=22210f03b8a2b203e2ad5ba9b600ed17f4a9407a#22210f03b8a2b203e2ad5ba9b600ed17f4a9407a"
 dependencies = [
  "cairo-rs",
  "pango",

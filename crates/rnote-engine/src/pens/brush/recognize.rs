@@ -141,7 +141,7 @@ pub fn recognize(input: &[Point]) -> Option<Vec<Point>> {
                 .all(|q| line_distance(*q, p[i], p[j]) < diagonal * 0.008)
         })
     });
-    if !has_straight_side && radial < 0.004 && turn.abs() > 5.4 && turn.abs() < 6.9 && travel < 7.2
+    if !has_straight_side && radial < 0.012 && turn.abs() > 5.4 && turn.abs() < 6.9 && travel < 7.2
     {
         let (rx, ry) = if (rx - ry).abs() / rx.max(ry) < 0.12 {
             let r = (rx + ry) * 0.5;
@@ -160,13 +160,18 @@ pub fn recognize(input: &[Point]) -> Option<Vec<Point>> {
     }
     // Simplify the closed outline into 3–8 straight sides. Split at the farthest
     // point, avoiding the zero-length baseline of a closed RDP input.
+    // Discard a short closing tail: joining it directly creates a spurious
+    // extra corner or reverses the winding of an otherwise valid polygon.
+    while p.len() > 5 && p.last().unwrap().distance(first) < diagonal * 0.10 {
+        p.pop();
+    }
     p.push(first);
     let split = p
         .iter()
         .enumerate()
         .max_by(|a, b| a.1.distance(first).total_cmp(&b.1.distance(first)))?
         .0;
-    let tolerance = (diagonal * 0.035).max(2.5);
+    let tolerance = (diagonal * 0.05).max(3.0);
     let mut vertices = vec![first];
     simplify(&p[..=split], tolerance, &mut vertices);
     simplify(&p[split..], tolerance, &mut vertices);
@@ -267,6 +272,32 @@ mod tests {
             })
             .chain(v.last().copied())
             .collect()
+    }
+    #[test]
+    fn uneven_handdrawn_circle() {
+        let points: Vec<_> = (0..=100)
+            .map(|i| {
+                let a = i as f64 * std::f64::consts::TAU / 100.;
+                let r = 70. + 5. * (3. * a).sin() + 2. * (11. * a).cos();
+                Point(r * a.cos(), r * a.sin())
+            })
+            .collect();
+        assert_eq!(recognize(&points).unwrap().len(), 97);
+    }
+    #[test]
+    fn handdrawn_rectangle_with_small_closing_gap() {
+        let mut points = sampled(&[
+            Point(0., 0.),
+            Point(100., 4.),
+            Point(104., 80.),
+            Point(-2., 78.),
+            Point(4., 5.),
+        ]);
+        for (i, p) in points.iter_mut().enumerate() {
+            p.0 += (i as f64 * 0.7).sin() * 1.5;
+            p.1 += (i as f64 * 0.9).cos() * 1.5;
+        }
+        assert_eq!(recognize(&points).unwrap().len(), 5);
     }
     #[test]
     fn line() {

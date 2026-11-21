@@ -847,6 +847,22 @@ impl Typewriter {
         widget_flags
     }
 
+    // Formatting buttons act on the active text box when no characters are
+    // highlighted. Copy/cut keep their explicit-selection semantics.
+    fn formatting_range(&self, engine_view: &EngineViewMut) -> Option<(Range<usize>, StrokeKey)> {
+        if let Some((range, key)) = self.selection_range() {
+            if !range.is_empty() {
+                return Some((range, key));
+            }
+        }
+        if let TypewriterState::Modifying { stroke_key, .. } = self.state {
+            if let Some(Stroke::TextStroke(stroke)) = engine_view.store.get_stroke_ref(stroke_key) {
+                return Some((0..stroke.text.len(), stroke_key));
+            }
+        }
+        None
+    }
+
     pub(crate) fn toggle_text_attribute_current_selection(
         &mut self,
         text_attribute: TextAttribute,
@@ -854,7 +870,7 @@ impl Typewriter {
     ) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
 
-        if let Some((selection_range, stroke_key)) = self.selection_range()
+        if let Some((selection_range, stroke_key)) = self.formatting_range(engine_view)
             && let Some(Stroke::TextStroke(textstroke)) =
                 engine_view.store.get_stroke_mut(stroke_key)
         {
@@ -880,7 +896,7 @@ impl Typewriter {
     ) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
 
-        if let Some((selection_range, stroke_key)) = self.selection_range()
+        if let Some((selection_range, stroke_key)) = self.formatting_range(engine_view)
             && let Some(Stroke::TextStroke(textstroke)) =
                 engine_view.store.get_stroke_mut(stroke_key)
         {
@@ -907,7 +923,7 @@ impl Typewriter {
     ) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
 
-        if let Some((selection_range, stroke_key)) = self.selection_range()
+        if let Some((selection_range, stroke_key)) = self.formatting_range(engine_view)
             && let Some(Stroke::TextStroke(textstroke)) =
                 engine_view.store.get_stroke_mut(stroke_key)
         {
@@ -940,7 +956,7 @@ impl Typewriter {
     ) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
 
-        if let Some((selection_range, stroke_key)) = self.selection_range()
+        if let Some((selection_range, stroke_key)) = self.formatting_range(engine_view)
             && let Some(Stroke::TextStroke(textstroke)) =
                 engine_view.store.get_stroke_mut(stroke_key)
         {

@@ -756,13 +756,11 @@ impl TextStroke {
             &range,
             self.text_style.ranged_text_attributes.clone(),
         );
-        let truncated_attrs = remove_intersecting_attrs_in_range(
-            &range,
-            intersecting_attrs
-                .into_iter()
-                .filter(|attr| attr.attribute.same_variant(&text_attribute))
-                .collect(),
-        );
+        let (matching, other): (Vec<_>, Vec<_>) = intersecting_attrs
+            .into_iter()
+            .partition(|attr| attr.attribute.same_variant(&text_attribute));
+        retained_attrs.extend(other);
+        let truncated_attrs = remove_intersecting_attrs_in_range(&range, matching);
         self.text_style.ranged_text_attributes = {
             retained_attrs.extend(truncated_attrs);
             retained_attrs.push(RangedTextAttribute {
@@ -1052,4 +1050,31 @@ fn remove_intersecting_attrs_in_range(
         // Filter out any that became empty or are contained in the given range
         .filter(|attr| !attr.range.is_empty())
         .collect::<Vec<RangedTextAttribute>>()
+}
+
+#[cfg(test)]
+mod formatting_regression_tests {
+    use super::*;
+
+    #[test]
+    fn replacing_color_preserves_bold_and_underline() {
+        let mut stroke = TextStroke::new("sample".into(), Vector2::ZERO, TextStyle::default());
+        stroke.toggle_attrs_for_range(0..6, TextAttribute::FontWeight(700));
+        stroke.toggle_attrs_for_range(0..6, TextAttribute::Underline(true));
+        stroke.replace_attr_for_range(0..6, TextAttribute::TextColor(Color::default()));
+        assert!(
+            stroke
+                .text_style
+                .ranged_text_attributes
+                .iter()
+                .any(|a| matches!(a.attribute, TextAttribute::FontWeight(700)))
+        );
+        assert!(
+            stroke
+                .text_style
+                .ranged_text_attributes
+                .iter()
+                .any(|a| matches!(a.attribute, TextAttribute::Underline(true)))
+        );
+    }
 }

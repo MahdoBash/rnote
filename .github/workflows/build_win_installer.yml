@@ -92,6 +92,12 @@ jobs:
       - name: Build
         run: just ci=true build
 
+      - name: Test text layout and formatting regressions
+        run: |
+          export CARGO_HOME="$(pwd)/_mesonbuild/cargo-home"
+          cargo test --target-dir _mesonbuild/target -p piet-cairo --lib rnote_alignment -- --test-threads=1
+          cargo test --target-dir _mesonbuild/target -p rnote-engine --lib formatting_regression_tests -- --test-threads=1
+
       - name: Save Rust build cache
         if: always()
         uses: actions/cache/save@v4
