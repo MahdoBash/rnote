@@ -185,6 +185,11 @@ pub(crate) fn handle_pointer_controller_event(
         };
         let modifier_keys = retrieve_modifier_keys(event.modifier_state());
         let pen_mode = retrieve_pen_mode(event);
+        #[cfg(target_os = "windows")]
+        let pressure_can_start_contact = matches!(
+            gdk_event_type,
+            gdk::EventType::MotionNotify | gdk::EventType::ButtonPress
+        );
 
         for (element, event_time) in elements {
             trace!(?element, ?pen_state, ?modifier_keys, ?pen_mode, event_time_delta=?now.duration_since(event_time), msg="handle pen event element");
@@ -196,7 +201,8 @@ pub(crate) fn handle_pointer_controller_event(
             // screen
             #[cfg(target_os = "windows")]
             {
-                if element.pressure > 0.0 && is_stylus {
+                // Some drivers retain the last measured pressure on the release event.
+                if pressure_can_start_contact && element.pressure > 0.0 && is_stylus {
                     pen_state = PenState::Down;
                 }
             }

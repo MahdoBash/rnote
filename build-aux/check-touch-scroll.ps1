@@ -15,6 +15,17 @@ public static class TouchScrollTest {
  [StructLayout(LayoutKind.Sequential)] public struct Touch {
   public Pointer Pointer; public uint Flags,Mask; public Rect Contact,ContactRaw; public uint Orientation,Pressure;
  }
+ [StructLayout(LayoutKind.Sequential)] struct Pen {
+  public Pointer Pointer; public uint Flags,Mask,Pressure,Rotation; public int TiltX,TiltY;
+ }
+ [StructLayout(LayoutKind.Explicit)] struct PointerData {
+  [FieldOffset(0)] public Touch Touch;
+  [FieldOffset(0)] public Pen Pen;
+ }
+ [StructLayout(LayoutKind.Sequential)] struct TypedPointer { public uint Type; public PointerData Data; }
+ [DllImport("user32.dll",SetLastError=true)] static extern IntPtr CreateSyntheticPointerDevice(uint type,uint count,uint feedback);
+ [DllImport("user32.dll",SetLastError=true)] static extern bool InjectSyntheticPointerInput(IntPtr device,ref TypedPointer input,uint count);
+ [DllImport("user32.dll")] static extern void DestroySyntheticPointerDevice(IntPtr device);
  [DllImport("user32.dll",SetLastError=true)] static extern bool InitializeTouchInjection(uint count,uint mode);
  [DllImport("user32.dll",SetLastError=true)] static extern bool InjectTouchInput(uint count,
   [In,MarshalAs(UnmanagedType.LPArray,SizeParamIndex=0)] Touch[] contacts);
@@ -66,6 +77,47 @@ public static class TouchScrollTest {
   Send(x,y-distance,0x40000);
  }
  public static void TapHold(int x,int y) {Send(x,y,0x10006);Thread.Sleep(150);Send(x,y,0x40000);}
+ static void BrushFrame(IntPtr pen,int x,int y,uint flags) {
+  if(pen==IntPtr.Zero) { Send(x,y,flags); return; }
+  var input=new TypedPointer { Type=3 };
+  input.Data.Pen.Pointer=new Pointer {Type=3,Id=0,Flags=flags,Pixel=new Point {X=x,Y=y}};
+  input.Data.Pen.Mask=1;
+  input.Data.Pen.Pressure=(flags & 4)!=0 ? 640u : 0u;
+  if(!InjectSyntheticPointerInput(pen,ref input,1))
+   throw new Exception("InjectSyntheticPointerInput flags="+flags+": "+Marshal.GetLastWin32Error());
+ }
+ public static void DrawHeldShape(bool penOval) {
+  const uint down=0x10006,update=0x20006,up=0x40000;
+  IntPtr pen=penOval?CreateSyntheticPointerDevice(3,1,3):IntPtr.Zero;
+  if(penOval && pen==IntPtr.Zero) throw new Exception("CreateSyntheticPointerDevice: "+Marshal.GetLastWin32Error());
+  try {
+   int[] xs={455,595,593,452,458}, ys={340,343,429,425,344};
+   int x=0,y=0;
+   for(int i=0;i<=48;i++) {
+    if(penOval) {
+     double angle=2*Math.PI*i/48;
+     double u=66*Math.Cos(angle),v=29*Math.Sin(angle);
+     x=570+(int)Math.Round(0.8*u-0.6*v);
+     y=390+(int)Math.Round(0.6*u+0.8*v);
+    } else {
+     int side=Math.Min(i/12,3);
+     double f=i/12.0-side;
+     x=(int)Math.Round(xs[side]+f*(xs[side+1]-xs[side])+Math.Sin(i));
+     y=(int)Math.Round(ys[side]+f*(ys[side+1]-ys[side])+Math.Cos(i));
+    }
+    if(i==0 && penOval) {BrushFrame(pen,x,y,0x20002);Thread.Sleep(20);}
+    BrushFrame(pen,x,y,i==0?down:update);
+    Thread.Sleep(12);
+   }
+   int endX=x,endY=y;
+   for(int i=0;i<48;i++) {
+    x=endX+(int)Math.Round(2.5*Math.Sin(i)); y=endY+(int)Math.Round(2.5*Math.Cos(i));
+    BrushFrame(pen,x,y,update); Thread.Sleep(18);
+   }
+   BrushFrame(pen,x,y,penOval?0x40002u:up);
+   if(penOval) {Thread.Sleep(20);BrushFrame(pen,x,y,0x20000);}
+  } finally {if(pen!=IntPtr.Zero) DestroySyntheticPointerDevice(pen);}
+ }
 }
 '@
 [TouchScrollTest]::Init()
@@ -85,10 +137,16 @@ try {
  [TouchScrollTest]::Twist(600,410,75,96,65)
  Start-Sleep -Milliseconds 750
  [TouchScrollTest]::Twist(600,410,96,75,-65)
+ Start-Sleep -Milliseconds 750
+ # Approach from both directions, cross the 180/-180 seam, then twist through a detent.
+ foreach($turn in @(88, 88, 93, -88, -107)) {
+  [TouchScrollTest]::Twist(600,410,80,80,$turn)
+  Start-Sleep -Milliseconds 600
+ }
  Start-Sleep -Seconds 1
 } finally { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
 $results=@(Select-String -Path $rotationLog -Pattern 'ROTATION END ([-.0-9]+) ([-.0-9]+)')
-if($results.Count -ne 2){Get-Content $rotationLog;throw 'Expected two twist gestures'}
+if($results.Count -ne 7){Get-Content $rotationLog;throw 'Expected all seven twist gestures'}
 $angle=[double]$results[0].Matches.Groups[1].Value
 $firstZoom=[double]$results[0].Matches.Groups[2].Value
 $finalAngle=[double]$results[1].Matches.Groups[1].Value
@@ -100,6 +158,37 @@ if($samples.Count -lt 10){throw 'Missing continuous rotation samples'}
 $drift=($samples|ForEach-Object {[double]$_.Matches.Groups[3].Value}|Measure-Object -Maximum).Maximum
 if($drift -gt 4){throw "Rotation pivot drifted by $drift pixels"}
 Write-Output "PASS two-finger rotation and pinch, angle=$angle, reset=$finalAngle, max pivot drift=$drift"
+$targets = @(90,180,-90,-180,73)
+for($i=0;$i -lt $targets.Count;$i++) {
+ $measured = [double]$results[$i+2].Matches.Groups[1].Value
+ $errorDegrees = [Math]::Abs([Math]::IEEERemainder($measured-$targets[$i],360))
+ $tolerance = if($i -eq 4){2}else{0.01}
+ if($errorDegrees -gt $tolerance){throw "Expected rotation $($targets[$i]), got $measured"}
+}
+Write-Output 'PASS exact quarter/half-turn snapping and deliberate release'
+
+$env:RNOTE_SCROLL_TEST='brush-hold'
+$brushLog=Join-Path $pwd 'scroll-brush-hold.txt'
+$app=Start-Process $Executable -PassThru -RedirectStandardError $brushLog
+try {
+ Start-Sleep -Seconds 7
+ $app.Refresh()
+ if($app.HasExited -or !$app.MainWindowHandle){throw 'Missing brush test window'}
+ [void][TouchScrollTest]::SetWindowPos($app.MainWindowHandle,[IntPtr]::Zero,50,50,1000,700,0x40)
+ [void][TouchScrollTest]::SetForegroundWindow($app.MainWindowHandle)
+ Start-Sleep -Seconds 1
+ [TouchScrollTest]::DrawHeldShape($false)
+ Start-Sleep -Milliseconds 600
+ [TouchScrollTest]::DrawHeldShape($true)
+ Start-Sleep -Milliseconds 600
+} finally { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
+$brushEvents = @(Get-Content $brushLog | Where-Object {$_ -match '^BRUSH '})
+foreach($shape in @('[4]','[4, 96]')) {
+ $preview = [Array]::IndexOf($brushEvents,"BRUSH PREVIEW $shape")
+ $lift = [Array]::IndexOf($brushEvents,"BRUSH LIFT $shape")
+ if($preview -lt 0 -or $lift -le $preview){Get-Content $brushLog;throw "Missing preview or committed shape: $shape"}
+}
+Write-Output 'PASS held touch rectangle and held pen oval, during contact and after lift'
 
 foreach($mode in @('reference','canvas','expanding','disabled','drawing')) {
  $env:RNOTE_SCROLL_TEST=$mode

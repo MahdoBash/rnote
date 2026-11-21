@@ -44,6 +44,9 @@ pub struct Brush {
 #[derive(Debug)]
 struct ShapeHold {
     points: Vec<Element>,
+    /// Samples through the last intentional movement. Stationary digitizer noise
+    /// must not add loops or length to the outline sent to the recognizer.
+    moving_points: usize,
     anchor: Vector2,
     moved_at: Instant,
     attempted: bool,
@@ -87,6 +90,14 @@ impl PenBehaviour for Brush {
     ) -> (EventResult<PenProgress>, WidgetFlags) {
         let mut widget_flags = WidgetFlags::default();
 
+        // A release can arrive after the hold deadline but before the next timer tick.
+        if let (PenEvent::Up { element, .. }, BrushState::Drawing { current_stroke_key, .. }, Some(hold)) =
+            (&event, &self.state, &self.hold)
+            && element.pos.distance(hold.anchor) * engine_view.camera.total_zoom() <= Self::RESUME_RADIUS
+        {
+            widget_flags |= self.recognize_hold_at(*current_stroke_key, now, engine_view);
+        }
+
         // Preserve the builder while showing the recognized path. Moving again
         // restores the freehand stroke and continues it; releasing commits once.
         if let (
@@ -98,16 +109,21 @@ impl PenBehaviour for Brush {
         {
             if let PenEvent::Down { element, .. } = &event {
                 let zoom = engine_view.camera.total_zoom();
-                if element.pos.distance(hold.anchor) * zoom > 3.0 {
+                let radius = if hold.original.is_some() { Self::RESUME_RADIUS } else { Self::HOLD_RADIUS };
+                let moved = element.pos.distance(hold.anchor) * zoom > radius;
+                if moved {
                     hold.anchor = element.pos;
                     hold.moved_at = now;
                     hold.attempted = false;
                     if let Some(original) = hold.original.take() {
+                        let preview_style = Self::get_preview_style(&engine_view.as_im());
                         if let Some(Stroke::BrushStroke(stroke)) =
                             engine_view.store.get_stroke_mut(*current_stroke_key)
                         {
                             stroke.replace_path(original);
+                            stroke.style = preview_style;
                         }
+                        engine_view.store.update_geometry_for_stroke(*current_stroke_key);
                         engine_view.store.regenerate_rendering_for_stroke(
                             *current_stroke_key,
                             engine_view.camera.viewport(),
@@ -117,13 +133,25 @@ impl PenBehaviour for Brush {
                     }
                 }
                 if hold.original.is_none()
-                    && hold.points.len() <= 10000
                     && hold
                         .points
                         .last()
                         .is_none_or(|p| p.pos.distance(element.pos) * zoom > 0.5)
                 {
+                    if hold.points.len() == 8192 {
+                        // Keep a bounded history even on high-rate tablets, retaining both
+                        // the first sample and the end of the moving part of the trace.
+                        let mut index = 0;
+                        hold.points.retain(|_| {
+                            index += 1;
+                            index % 2 == 1
+                        });
+                        hold.moving_points = hold.moving_points.div_ceil(2);
+                    }
                     hold.points.push(*element);
+                }
+                if moved {
+                    hold.moving_points = hold.points.len();
                 }
             }
             if hold.original.is_some() {
@@ -210,6 +238,7 @@ impl PenBehaviour for Brush {
 
                     self.hold = Some(ShapeHold {
                         points: vec![element],
+                        moving_points: 1,
                         anchor: element.pos,
                         moved_at: now,
                         attempted: false,
@@ -479,10 +508,23 @@ impl DrawableOnDoc for Brush {
 
 impl Brush {
     const INPUT_OVERSHOOT: f64 = 30.0;
+    // Logical screen pixels, independent of canvas zoom.
+    const HOLD_RADIUS: f64 = 6.0;
+    const RESUME_RADIUS: f64 = 14.0;
+    const HOLD_DELAY: Duration = Duration::from_millis(450);
 
     pub(crate) fn recognize_hold(
         &mut self,
         key: StrokeKey,
+        engine_view: &mut EngineViewMut,
+    ) -> WidgetFlags {
+        self.recognize_hold_at(key, Instant::now(), engine_view)
+    }
+
+    fn recognize_hold_at(
+        &mut self,
+        key: StrokeKey,
+        now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> WidgetFlags {
         let mut flags = WidgetFlags::default();
@@ -500,22 +542,23 @@ impl Brush {
         };
         if hold.original.is_some()
             || hold.attempted
-            || hold.moved_at.elapsed() < Duration::from_millis(600)
+            || now.saturating_duration_since(hold.moved_at) < Self::HOLD_DELAY
         {
             return flags;
         }
         hold.attempted = true;
         let zoom = engine_view.camera.total_zoom();
-        let points: Vec<_> = hold
-            .points
+        let moving = &hold.points[..hold.moving_points];
+        let points: Vec<_> = moving
             .iter()
+            .chain(hold.points.last())
             .map(|p| recognize::Point(p.pos.x * zoom, p.pos.y * zoom))
             .collect();
         let Some(clean) = recognize::recognize(&points) else {
             return flags;
         };
         let pressure =
-            hold.points.iter().map(|p| p.pressure).sum::<f64>() / hold.points.len() as f64;
+            moving.iter().map(|p| p.pressure).sum::<f64>() / moving.len() as f64;
         let element =
             |p: recognize::Point| Element::new(Vector2::new(p.0 / zoom, p.1 / zoom), pressure);
         let path = PenPath {
@@ -534,6 +577,7 @@ impl Brush {
                 .brush_config
                 .style_for_current_options();
         }
+        engine_view.store.update_geometry_for_stroke(key);
         engine_view.store.regenerate_rendering_for_stroke(
             key,
             engine_view.camera.viewport(),
@@ -591,6 +635,80 @@ mod held_shape_render_tests {
     use super::*;
     use crate::Image;
     use rnote_compose::style::{Composer, textured::TexturedOptions};
+
+    fn contact(engine: &mut crate::Engine, pos: (f64,f64), release: bool, time: Instant) {
+        let element = Element::new(Vector2::new(pos.0,pos.1), if release { 0.0 } else { 0.75 });
+        let modifier_keys = Default::default();
+        let event = if release {
+            PenEvent::Up {element,modifier_keys}
+        } else {
+            PenEvent::Down {element,modifier_keys}
+        };
+        engine.handle_pen_event(event, None, time);
+    }
+
+    fn draw_rectangle(engine: &mut crate::Engine, start: Instant) -> StrokeKey {
+        let corners = [(49.,50.), (146.,52.), (144.,120.), (48.,118.), (51.,52.)];
+        for (i,p) in corners.into_iter().enumerate() {
+            contact(engine,p,false,start+Duration::from_millis(i as u64*15));
+        }
+        engine.store.stroke_keys_unordered()[0]
+    }
+
+    fn is_closed_rectangle(engine: &crate::Engine, key: StrokeKey) -> bool {
+        let Some(Stroke::BrushStroke(s)) = engine.store.get_stroke_ref(key) else { return false };
+        let path = &s.path;
+        path.segments.len() == 4 && path.segments.iter().all(|s| matches!(s, Segment::LineTo { .. }))
+            && path.start.pos == path.segments[3].end().pos
+    }
+
+    #[test]
+    fn preview_survives_pen_jitter_and_lift_and_undoes_as_one_stroke() {
+        for style in [BrushStyle::Solid, BrushStyle::Marker, BrushStyle::Textured] {
+            let mut engine = crate::Engine::default();
+            engine.config.write().pens_config.brush_config.style = style;
+            let start = Instant::now() - Duration::from_millis(1000);
+            let key = draw_rectangle(&mut engine,start);
+            for i in 0..90 {
+                let phase = i as f64;
+                contact(&mut engine,(51.+3.4*phase.sin(),52.+2.8*phase.cos()),false,
+                    start+Duration::from_millis(100+i*9));
+            }
+            engine.handle_engine_task(EngineTask::RecognizeBrushHold(key));
+            assert!(is_closed_rectangle(&engine,key), "preview for {style:?}");
+            contact(&mut engine,(58.,55.),false,Instant::now());
+            contact(&mut engine,(58.,55.),true,Instant::now());
+            assert!(is_closed_rectangle(&engine,key), "after lift for {style:?}");
+            assert_eq!(engine.store.stroke_keys_unordered().len(),1);
+            engine.undo(Instant::now());
+            assert!(engine.store.stroke_keys_unordered().is_empty());
+            engine.redo(Instant::now());
+            assert!(is_closed_rectangle(&engine,key));
+        }
+    }
+
+    #[test]
+    fn release_checks_the_deadline_even_without_a_timer_tick() {
+        for (pause, expected) in [(150,false),(460,true)] {
+            let mut engine = crate::Engine::default();
+            let start = Instant::now();
+            let key = draw_rectangle(&mut engine,start);
+            contact(&mut engine,(52.,53.),true,start+Duration::from_millis(60+pause));
+            assert_eq!(is_closed_rectangle(&engine,key),expected);
+        }
+    }
+
+    #[test]
+    fn moving_past_the_preview_restores_the_freehand_path() {
+        let mut engine = crate::Engine::default();
+        let key = draw_rectangle(&mut engine,Instant::now()-Duration::from_secs(1));
+        engine.handle_engine_task(EngineTask::RecognizeBrushHold(key));
+        assert!(is_closed_rectangle(&engine,key));
+        contact(&mut engine,(86.,79.),false,Instant::now());
+        contact(&mut engine,(100.,85.),true,Instant::now());
+        assert!(!is_closed_rectangle(&engine,key));
+        assert_eq!(engine.store.stroke_keys_unordered().len(),1);
+    }
 
     #[test]
     fn recognized_rectangle_renders_all_four_sides() {

@@ -1,4 +1,5 @@
 mod pageposition;
+mod rotationsnap;
 mod scrolltrace;
 #[cfg(target_os = "windows")]
 mod coast;
@@ -659,7 +660,7 @@ mod imp {
                     #[strong] twisting,
                     #[weak(rename_to=wrapper)] obj,
                     move |_, _| {
-                        angle_begin.set(wrapper.canvas().engine_ref().camera.rotation());
+                        angle_begin.set(rotationsnap::gesture_origin(wrapper.canvas().engine_ref().camera.rotation()));
                         twisting.set(false);
                     }
                 ));
@@ -693,7 +694,7 @@ mod imp {
                         twisting.set(true);
                         let canvas = wrapper.canvas();
                         let flags = canvas.engine_mut().camera.rotate_about(
-                            angle_begin.get() + signed_delta, document, Vector2::new(x,y));
+                            rotationsnap::display_angle(angle_begin.get() + signed_delta), document, Vector2::new(x,y));
                         canvas.emit_handle_widget_flags(flags);
                     }
                 ));
