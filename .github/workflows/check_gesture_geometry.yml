@@ -15,12 +15,19 @@ jobs:
           /tmp/recognize
           rustc --edition 2024 --test crates/rnote-ui/src/canvaswrapper/rotationsnap.rs -o /tmp/rotation
           /tmp/rotation
+      - name: Compare the new and previous recognizers on varied pen traces
+        run: |
+          git fetch --depth=1 origin e0607d3eac9ee815961febac749627521ec859c8
+          git show FETCH_HEAD:crates/rnote-engine/src/pens/brush/recognize.rs > build-aux/old-recognize.rs
+          rustc --edition 2024 -O build-aux/compare-gesture-samples.rs -o /tmp/compare
+          /tmp/compare
       - name: Format the geometry modules
         if: always()
         run: |
           mkdir formatted
-          for path in crates/rnote-engine/src/pens/brush/recognize.rs crates/rnote-ui/src/canvaswrapper/rotationsnap.rs; do
-            rustfmt --edition 2024 --emit stdout "$path" | sed -e '1{/^.*\.rs:$/d;}' > "formatted/$(basename "$path")"
+          for path in crates/rnote-engine/src/pens/brush/recognize.rs crates/rnote-ui/src/canvaswrapper/rotationsnap.rs crates/rnote-engine/src/pens/brush.rs crates/rnote-ui/src/canvaswrapper/scrolltrace.rs; do
+            rustfmt --edition 2024 "$path"
+            cp "$path" "formatted/$(basename "$path")"
           done
       - uses: actions/upload-artifact@v7
         if: always()

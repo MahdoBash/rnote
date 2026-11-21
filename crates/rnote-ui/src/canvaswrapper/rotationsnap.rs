@@ -18,7 +18,9 @@ fn mapped_distance(distance: f64) -> f64 {
 }
 
 pub(crate) fn display_angle(input: f64) -> f64 {
-    let Some(target) = nearby_detent(input) else { return input };
+    let Some(target) = nearby_detent(input) else {
+        return input;
+    };
     let delta = input - target;
     target + delta.signum() * mapped_distance(delta.abs())
 }
@@ -26,7 +28,9 @@ pub(crate) fn display_angle(input: f64) -> f64 {
 /// Start a new gesture at the displayed orientation, including angles typed in the menu.
 /// Invert the short transition once on contact so regripping never reapplies the attraction.
 pub(crate) fn gesture_origin(display: f64) -> f64 {
-    let Some(target) = nearby_detent(display) else { return display };
+    let Some(target) = nearby_detent(display) else {
+        return display;
+    };
     let delta = display - target;
     if delta.abs() < 1e-12 {
         return target;
@@ -34,7 +38,11 @@ pub(crate) fn gesture_origin(display: f64) -> f64 {
     let (mut lo, mut hi) = (CAPTURE, OUTER);
     for _ in 0..32 {
         let mid = (lo + hi) * 0.5;
-        if mapped_distance(mid) < delta.abs() { lo = mid; } else { hi = mid; }
+        if mapped_distance(mid) < delta.abs() {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
     }
     target + delta.signum() * (lo + hi) * 0.5
 }
@@ -46,7 +54,10 @@ mod tests {
     fn locks_from_both_sides_and_across_the_wrap() {
         for target in [-270.0_f64, -180.0, -90.0, 90.0, 180.0, 270.0] {
             for offset in [-4.99, -2.0, 0.0, 2.0, 4.99] {
-                assert!((display_angle((target + offset).to_radians()).to_degrees() - target).abs() < 1e-10);
+                assert!(
+                    (display_angle((target + offset).to_radians()).to_degrees() - target).abs()
+                        < 1e-10
+                );
             }
         }
         for free in [-24.0_f64, -2.0, 2.0, 65.0, 108.0, 156.0] {

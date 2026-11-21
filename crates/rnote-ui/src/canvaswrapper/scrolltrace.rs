@@ -1,6 +1,19 @@
 //! Opt-in diagnostics for Windows touch regression tests. Disabled in normal use.
 use super::*;
 
+// Report the geometry a save would persist. A zero is a freehand/open stroke.
+fn closed_brush_sides(canvas: &RnCanvas) -> Vec<usize> {
+    use rnote_compose::penpath::Segment;
+    use rnote_engine::strokes::Stroke;
+    canvas.engine_ref().take_snapshot().stroke_components.values().filter_map(|stroke| {
+        let Stroke::BrushStroke(brush) = stroke.as_ref() else { return None };
+        let path = &brush.path;
+        let closed = path.segments.last().is_some_and(|s| s.end().pos == path.start.pos);
+        let straight = path.segments.iter().all(|s| matches!(s, Segment::LineTo { .. }));
+        Some(if closed && straight { path.segments.len() } else { 0 })
+    }).collect()
+}
+
 pub(super) fn install(wrapper: &RnCanvasWrapper) {
     if std::env::var_os("RNOTE_SCROLL_TRACE").is_none() {
         return;
@@ -41,7 +54,7 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
         } else {
             if std::env::var_os("RNOTE_SCROLL_TEST").is_some() {
                 let canvas = wrapper.canvas();
-                canvas.set_touch_drawing(mode == "drawing");
+                canvas.set_touch_drawing(mode == "drawing" || mode == "brush-hold");
                 wrapper.set_inertial_scrolling(mode != "disabled");
                 let mut engine = canvas.engine_mut();
                 engine.document.config.layout = if mode == "expanding" {
@@ -89,7 +102,16 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
         events.set_propagation_phase(PropagationPhase::Capture);
         let test_canvas = wrapper.canvas().downgrade();
         let expansion_armed = Cell::new(false);
+        let trace_shapes = mode == "brush-hold";
         events.connect_event(move |_, event| {
+            if trace_shapes && matches!(event.event_type(), gdk::EventType::TouchEnd | gdk::EventType::ButtonRelease) {
+                let weak = test_canvas.clone();
+                glib::idle_add_local_once(move || {
+                    if let Some(canvas) = weak.upgrade() {
+                        eprintln!("BRUSH LIFT {:?}", closed_brush_sides(&canvas));
+                    }
+                });
+            }
             if mode == "expanding" && event.event_type() == gdk::EventType::TouchEnd && !expansion_armed.replace(true) {
                 if let Some(canvas) = test_canvas.upgrade() {
                     // Put the growth threshold 20 px beyond the release position:
@@ -123,8 +145,16 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
         let canvas = (!reference).then(|| wrapper.canvas().downgrade());
         let last = Cell::new((f64::NAN, f64::NAN, false));
         let last_height = Cell::new(f64::NAN);
+        let last_paths = RefCell::new(Vec::new());
         scroller.add_tick_callback(move |s, _| {
             if let Some(c) = canvas.as_ref().and_then(|c| c.upgrade()) {
+                if trace_shapes {
+                    let paths = closed_brush_sides(&c);
+                    if *last_paths.borrow() != paths {
+                        eprintln!("BRUSH PREVIEW {paths:?}");
+                        last_paths.replace(paths);
+                    }
+                }
                 let height = c.engine_ref().document.height;
                 if height != last_height.replace(height) { eprintln!("SCROLL HEIGHT {:.3}", height); }
             }
