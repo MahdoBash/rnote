@@ -16,7 +16,8 @@ public static class TouchScrollTest {
   public Pointer Pointer; public uint Flags,Mask; public Rect Contact,ContactRaw; public uint Orientation,Pressure;
  }
  [DllImport("user32.dll",SetLastError=true)] static extern bool InitializeTouchInjection(uint count,uint mode);
- [DllImport("user32.dll",SetLastError=true)] static extern bool InjectTouchInput(uint count,[In] Touch[] contacts);
+ [DllImport("user32.dll",SetLastError=true)] static extern bool InjectTouchInput(uint count,
+  [In,MarshalAs(UnmanagedType.LPArray,SizeParamIndex=0)] Touch[] contacts);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls,string title);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd,out Rect rect);
@@ -27,20 +28,35 @@ public static class TouchScrollTest {
   t.Contact=new Rect{L=x-2,T=y-2,R=x+2,B=y+2};t.Orientation=90;t.Pressure=512;
   return t;
  }
+ static void Frame(string step,params Touch[] contacts) {
+  for(int attempt=0;attempt<5;attempt++) {
+   if(InjectTouchInput((uint)contacts.Length,contacts)) return;
+   int error=Marshal.GetLastWin32Error();
+   if(error!=21 || attempt==4) throw new Exception(step+": Win32 error "+error);
+   Thread.Sleep(2); // ERROR_NOT_READY: send this same frame at a later timestamp.
+  }
+ }
  static void Send(int x,int y,uint flags) {
-  if(!InjectTouchInput(1,new[]{Contact(1,x,y,flags)})) throw new Exception("InjectTouchInput: "+Marshal.GetLastWin32Error());
+  Frame("Single contact",Contact(0,x,y,flags));
  }
  public static void Twist(int cx,int cy,double startRadius,double endRadius,double degrees) {
-  for(int i=0;i<=25;i++){
-   double f=Math.Min(i,24)/24.0;
+  const uint down=0x10006,update=0x20006,up=0x40000;
+  int dx=(int)Math.Round(startRadius),dy=0;
+  Frame("First finger down",Contact(0,cx-dx,cy,down));
+  Thread.Sleep(20);
+  Frame("Second finger down",Contact(0,cx-dx,cy,update),Contact(1,cx+dx,cy,down));
+  Thread.Sleep(20);
+  for(int i=1;i<=24;i++){
+   double f=i/24.0;
    double radius=startRadius+(endRadius-startRadius)*f;
-   int dx=(int)Math.Round(radius*Math.Cos(degrees*Math.PI*f/180));
-   int dy=(int)Math.Round(radius*Math.Sin(degrees*Math.PI*f/180));
-   uint flags=i==0?0x10006u:i==25?0x40000u:0x20006u;
-   var pair=new[]{Contact(1,cx-dx,cy-dy,flags),Contact(2,cx+dx,cy+dy,flags)};
-   if(!InjectTouchInput(2,pair)) throw new Exception("Two-finger injection: "+Marshal.GetLastWin32Error());
+   dx=(int)Math.Round(radius*Math.Cos(degrees*Math.PI*f/180));
+   dy=(int)Math.Round(radius*Math.Sin(degrees*Math.PI*f/180));
+   Frame("Twist frame "+i,Contact(0,cx-dx,cy-dy,update),Contact(1,cx+dx,cy+dy,update));
    Thread.Sleep(20);
   }
+  Frame("Second finger up",Contact(0,cx-dx,cy-dy,update),Contact(1,cx+dx,cy+dy,up));
+  Thread.Sleep(20);
+  Frame("First finger up",Contact(0,cx-dx,cy-dy,up));
  }
  public static void Init() { if(!InitializeTouchInjection(2,3)) throw new Exception("InitializeTouchInjection: "+Marshal.GetLastWin32Error()); }
  public static void Swipe(int x,int y,int distance,int delay,int pause) {
