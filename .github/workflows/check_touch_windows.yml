@@ -1,5 +1,7 @@
 name: Windows Touch Regression
 on:
+  push:
+    branches: [codex/test-touch/44909272365]
   workflow_dispatch:
     inputs:
       build_run:
@@ -17,7 +19,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: rnote-win-installer-artifact
-          run-id: ${{ inputs.build_run }}
+          run-id: ${{ inputs.build_run || '44909272365' }}
           github-token: ${{ github.token }}
           path: installer
       - name: Install and test touch input
