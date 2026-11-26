@@ -185,6 +185,9 @@ impl RnAppWindow {
         let action_block_pinch_zoom =
             gio::PropertyAction::new("block-pinch-zoom", self, "block-pinch-zoom");
         self.add_action(&action_block_pinch_zoom);
+        if let Some(settings) = self.app().app_settings() {
+            self.add_action(&settings.create_action("rotation-locked"));
+        }
         let action_respect_borders =
             gio::PropertyAction::new("respect-borders", self, "respect-borders");
         self.add_action(&action_respect_borders);

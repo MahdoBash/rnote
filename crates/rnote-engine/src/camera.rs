@@ -317,8 +317,19 @@ impl Camera {
         if !radians.is_finite() {
             return WidgetFlags::default();
         }
-        self.rotation = (radians + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
-            - std::f64::consts::PI;
+        // Keep both endpoints: the menu distinguishes clockwise +180° from
+        // counterclockwise -180° even though they have the same transform.
+        use std::f64::consts::{PI, TAU};
+        let angle = radians % TAU;
+        self.rotation = if angle > PI {
+            angle - TAU
+        } else if angle < -PI {
+            angle + TAU
+        } else if angle == 0.0 {
+            0.0
+        } else {
+            angle
+        };
         self.offset = self.offset_for_anchor(document, surface);
         WidgetFlags {
             view_modified: true,
@@ -476,6 +487,15 @@ mod tests {
                 doc_center,
                 epsilon = 1e-8
             );
+        }
+    }
+
+    #[test]
+    fn opposite_half_turns_keep_their_signed_menu_value() {
+        let mut camera = Camera::default();
+        for degrees in [180.0_f64, -180.0, 540.0, -540.0, 360.0, -360.0] {
+            camera.rotate_about(degrees.to_radians(), Vector2::ZERO, Vector2::ZERO);
+            assert_eq!(camera.rotation().to_degrees(), degrees % 360.0);
         }
     }
 

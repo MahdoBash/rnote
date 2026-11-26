@@ -165,16 +165,52 @@ fn cross(a: Point, b: Point, c: Point) -> f64 {
     (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
 }
 
-fn polygon(ring: &[Point], diagonal: f64) -> Option<(Vec<Point>, bool)> {
-    let first = ring[0];
-    let mut p = ring.to_vec();
+// Count long, straight runs around the outline. Opposite flat sections of an
+// elongated oval point in nearly the same direction; a polygon changes direction
+// at distinct corners. Measuring coverage also rejects isolated flat spots.
+fn has_straight_sides(ring: &[Point], diagonal: f64) -> bool {
+    let n = ring.len();
+    let mut covered = vec![false; n];
+    let mut directions = Vec::<Point>::new();
+    let mut distinct = false;
+    for i in 0..n {
+        let a = ring[i];
+        let Some(span) = (2..n / 2).find(|&j| a.distance(ring[(i + j) % n]) >= diagonal * 0.24)
+        else {
+            continue;
+        };
+        let b = ring[(i + span) % n];
+        let limit = (diagonal * 0.009).max(0.50);
+        if (1..span).any(|j| line_distance(ring[(i + j) % n], a, b) > limit) {
+            continue;
+        }
+        for j in 0..=span {
+            covered[(i + j) % n] = true;
+        }
+        let len = a.distance(b);
+        let axis = Point((b.0 - a.0) / len, (b.1 - a.1) / len);
+        distinct |= directions
+            .iter()
+            .any(|p| (p.0 * axis.0 + p.1 * axis.1).abs() < 0.86);
+        directions.push(axis);
+    }
+    distinct && covered.iter().filter(|&&hit| hit).count() * 2 >= n
+}
+
+fn polygon(samples: &[Point], diagonal: f64, outline_length: f64) -> Option<Vec<Point>> {
+    let first = samples[0];
+    let mut p = samples.to_vec();
+    // A small overshoot at the pen-down point otherwise looks like another side.
+    while p.len() > 4 && p.last()?.distance(first) < diagonal * 0.09 {
+        p.pop();
+    }
     p.push(first);
     let split = p
         .iter()
         .enumerate()
         .max_by(|a, b| a.1.distance(first).total_cmp(&b.1.distance(first)))?
         .0;
-    let tolerance = (diagonal * 0.037).max(1.35);
+    let tolerance = (diagonal * 0.05).max(1.65);
     let mut vertices = vec![first];
     simplify(&p[..=split], tolerance, &mut vertices);
     simplify(&p[split..], tolerance, &mut vertices);
@@ -222,37 +258,10 @@ fn polygon(ring: &[Point], diagonal: f64) -> Option<(Vec<Point>, bool)> {
             }
         }
     }
-    let length: f64 = p.windows(2).map(|w| w[0].distance(w[1])).sum();
-    if signed_area.abs() < 0.06 * diagonal * diagonal || length > 1.20 * perimeter {
+    if signed_area.abs() < 0.06 * diagonal * diagonal || outline_length > 1.20 * perimeter {
         return None;
     }
     let winding = signed_area;
-    // Count evidence along the middle of each side. One locally flat section of
-    // an oval is insufficient to classify the whole outline as a polygon.
-    let mut error = vec![0.; n];
-    let mut counts = vec![0; n];
-    for &q in ring {
-        let (i, &(a, b)) = edges.iter().enumerate().min_by(|(_, l), (_, r)| {
-            line_distance(q, l.0, l.1).total_cmp(&line_distance(q, r.0, r.1))
-        })?;
-        let len = a.distance(b);
-        let t = ((q.0 - a.0) * (b.0 - a.0) + (q.1 - a.1) * (b.1 - a.1)) / (len * len);
-        if (0.18..0.82).contains(&t) {
-            error[i] += line_distance(q, a, b).powi(2);
-            counts[i] += 1;
-        }
-    }
-    let straight = (0..n)
-        .filter(|&i| {
-            let (a, b) = edges[i];
-            counts[i] >= 2
-                && (error[i] / counts[i] as f64).sqrt()
-                    <= (a.distance(b) * 0.040).max(diagonal * 0.006).max(0.65)
-        })
-        .count();
-    if straight * 2 < n {
-        return None;
-    }
     // Four near-perpendicular sides become an exact rotated rectangle.
     if n == 4 {
         let (a, b, c, d) = (vertices[0], vertices[1], vertices[2], vertices[3]);
@@ -294,7 +303,7 @@ fn polygon(ring: &[Point], diagonal: f64) -> Option<(Vec<Point>, bool)> {
         }
     }
     vertices.push(vertices[0]);
-    Some((vertices, straight * 4 >= n * 3))
+    Some(vertices)
 }
 
 /// Return a cleaned single stroke, or leave freehand input alone when the fit is ambiguous.
@@ -342,20 +351,24 @@ pub fn recognize(input: &[Point]) -> Option<Vec<Point>> {
         && length < 1.18 * chord
         && clean
             .iter()
-            .all(|&q| line_distance(q, first, last) < (diagonal * 0.047).max(2.5))
+            .all(|&q| line_distance(q, first, last) < (diagonal * 0.060).max(3.2))
     {
         return Some(vec![first, last]);
     }
     if chord > diagonal * 0.21 {
-        let mut corners = vec![first];
-        simplify(&clean, (diagonal * 0.035).max(2.0), &mut corners);
-        if let Some(path) = arrow(&corners, diagonal) {
-            return Some(path);
+        for tolerance in [0.035, 0.05, 0.025] {
+            let mut corners = vec![first];
+            simplify(&clean, (diagonal * tolerance).max(1.7), &mut corners);
+            if let Some(path) = arrow(&corners, diagonal) {
+                return Some(path);
+            }
+            corners.reverse();
+            if let Some(mut path) = arrow(&corners, diagonal) {
+                path.reverse();
+                return Some(path);
+            }
         }
-        corners.reverse();
-        let mut path = arrow(&corners, diagonal)?;
-        path.reverse();
-        return Some(path);
+        return None;
     }
     if length < diagonal * 1.8 || length > diagonal * 4.0 {
         return None;
@@ -365,11 +378,24 @@ pub fn recognize(input: &[Point]) -> Option<Vec<Point>> {
     }
     let outline = resample(&clean, 128);
     let ring = &outline[..128];
-    let polygon = polygon(ring, diagonal);
-    if let Some((path, true)) = polygon.as_ref() {
-        return Some(path.clone());
+    // Keep real corner samples when available. Resampling before corner detection
+    // can replace one vertex with two points on opposite sides of the corner.
+    let corners = polygon(
+        if input.len() <= 512 { input } else { &uniform },
+        diagonal,
+        length + chord,
+    );
+    let curved = ellipse(ring);
+    match (corners, curved) {
+        (Some(poly), Some(oval)) => {
+            if poly.len() <= 5 || has_straight_sides(&uniform[..160], diagonal) {
+                Some(poly)
+            } else {
+                Some(oval)
+            }
+        }
+        (poly, oval) => poly.or(oval),
     }
-    ellipse(ring).or_else(|| polygon.map(|(path, _)| path))
 }
 
 #[cfg(test)]

@@ -57,8 +57,9 @@ public static class TouchScrollTest {
   Thread.Sleep(20);
   Frame("Second finger down",Contact(0,cx-dx,cy,update),Contact(1,cx+dx,cy,down));
   Thread.Sleep(20);
-  for(int i=1;i<=24;i++){
-   double f=i/24.0;
+  int steps=Math.Max(24,(int)Math.Ceiling(Math.Abs(degrees)/3.0));
+  for(int i=1;i<=steps;i++){
+   double f=(double)i/steps;
    double radius=startRadius+(endRadius-startRadius)*f;
    dx=(int)Math.Round(radius*Math.Cos(degrees*Math.PI*f/180));
    dy=(int)Math.Round(radius*Math.Sin(degrees*Math.PI*f/180));
@@ -139,14 +140,21 @@ try {
  [TouchScrollTest]::Twist(600,410,96,75,-65)
  Start-Sleep -Milliseconds 750
  # Approach from both directions, cross the 180/-180 seam, then twist through a detent.
- foreach($turn in @(88, 88, 93, -88, -107)) {
+ foreach($turn in @(88, 88, 93, -88, -107, -71, -89, -92, 87, 92, 182, -177, -93)) {
   [TouchScrollTest]::Twist(600,410,80,80,$turn)
   Start-Sleep -Milliseconds 600
  }
+ # The menu lock is now on at -90 degrees; twist and zoom in/out while locked.
+ [TouchScrollTest]::Twist(600,410,75,96,65)
+ Start-Sleep -Milliseconds 650
+ [TouchScrollTest]::Twist(600,410,96,75,-31)
+ Start-Sleep -Milliseconds 650
+ # Unlocking restores touch rotation on the next contact.
+ [TouchScrollTest]::Twist(600,410,80,80,88)
  Start-Sleep -Seconds 1
 } finally { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
 $results=@(Select-String -Path $rotationLog -Pattern 'ROTATION END ([-.0-9]+) ([-.0-9]+)')
-if($results.Count -ne 7){Get-Content $rotationLog;throw 'Expected all seven twist gestures'}
+if($results.Count -ne 18){Get-Content $rotationLog;throw 'Expected all eighteen twist gestures'}
 $angle=[double]$results[0].Matches.Groups[1].Value
 $firstZoom=[double]$results[0].Matches.Groups[2].Value
 $finalAngle=[double]$results[1].Matches.Groups[1].Value
@@ -158,14 +166,20 @@ if($samples.Count -lt 10){throw 'Missing continuous rotation samples'}
 $drift=($samples|ForEach-Object {[double]$_.Matches.Groups[3].Value}|Measure-Object -Maximum).Maximum
 if($drift -gt 4){throw "Rotation pivot drifted by $drift pixels"}
 Write-Output "PASS two-finger rotation and pinch, angle=$angle, reset=$finalAngle, max pivot drift=$drift"
-$targets = @(90,180,-90,-180,73)
+$targets = @(90,180,-90,-180,73,0,-90,-180,-90,0,180,0,-90,-90,-90,0)
 for($i=0;$i -lt $targets.Count;$i++) {
  $measured = [double]$results[$i+2].Matches.Groups[1].Value
- $errorDegrees = [Math]::Abs([Math]::IEEERemainder($measured-$targets[$i],360))
+ $errorDegrees = [Math]::Abs($measured-$targets[$i])
  $tolerance = if($i -eq 4){2}else{0.01}
  if($errorDegrees -gt $tolerance){throw "Expected rotation $($targets[$i]), got $measured"}
 }
-Write-Output 'PASS exact quarter/half-turn snapping and deliberate release'
+$beforeLock = [double]$results[14].Matches.Groups[2].Value
+$lockedZoom = [double]$results[15].Matches.Groups[2].Value
+$afterLock = [double]$results[16].Matches.Groups[2].Value
+if([Math]::Abs($lockedZoom/$beforeLock-96/75) -gt 0.05 -or [Math]::Abs($afterLock/$beforeLock-1) -gt 0.05){
+ throw "Pinch zoom while rotation was locked: $beforeLock, $lockedZoom, $afterLock"
+}
+Write-Output 'PASS signed -180 and +180, upright from either side, lock at -90, pinch while locked, and unlock'
 
 $env:RNOTE_SCROLL_TEST='brush-hold'
 $brushLog=Join-Path $pwd 'scroll-brush-hold.txt'

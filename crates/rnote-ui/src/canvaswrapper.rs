@@ -44,6 +44,7 @@ mod imp {
         pub(crate) canvas_touch_drawing_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(crate) show_scrollbars: Cell<bool>,
         pub(crate) block_pinch_zoom: Cell<bool>,
+        pub(crate) rotation_locked: Cell<bool>,
         pub(crate) inertial_scrolling: Cell<bool>,
         pub(crate) pointer_pos: Cell<Option<Vector2>>,
         pub(crate) page_indicator_corner: Cell<u32>,
@@ -168,6 +169,7 @@ mod imp {
                 canvas_touch_drawing_handler: RefCell::new(None),
                 show_scrollbars: Cell::new(false),
                 block_pinch_zoom: Cell::new(false),
+                rotation_locked: Cell::new(false),
                 inertial_scrolling: Cell::new(true),
                 pointer_pos: Cell::new(None),
                 last_contextmenu_pos: Cell::new(None),
@@ -333,6 +335,7 @@ mod imp {
                     glib::ParamSpecBoolean::builder("show-scrollbars")
                         .default_value(false)
                         .build(),
+                    glib::ParamSpecBoolean::builder("rotation-locked").build(),
                     glib::ParamSpecBoolean::builder("block-pinch-zoom")
                         .default_value(false)
                         .build(),
@@ -349,6 +352,7 @@ mod imp {
                 "page-indicator-corner" => self.page_indicator_corner.get().to_value(),
                 "show-scrollbars" => self.show_scrollbars.get().to_value(),
                 "block-pinch-zoom" => self.block_pinch_zoom.get().to_value(),
+                "rotation-locked" => self.rotation_locked.get().to_value(),
                 "inertial-scrolling" => self.inertial_scrolling.get().to_value(),
                 _ => unimplemented!(),
             }
@@ -384,6 +388,10 @@ mod imp {
                     self.scroller.hscrollbar().set_visible(show_scrollbars);
                     self.scroller.vscrollbar().set_visible(show_scrollbars);
                 }
+                "rotation-locked" => {
+                    self.rotation_locked.set(value.get().expect("boolean property"));
+                    self.canvas_zoom_gesture_update();
+                }
                 "block-pinch-zoom" => {
                     let block_pinch_zoom = value
                         .get::<bool>()
@@ -414,7 +422,11 @@ mod imp {
                 PropagationPhase::None
             };
             self.canvas_zoom_gesture.set_propagation_phase(phase);
-            self.canvas_rotate_gesture.set_propagation_phase(phase);
+            self.canvas_rotate_gesture.set_propagation_phase(if self.rotation_locked.get() {
+                PropagationPhase::None
+            } else {
+                phase
+            });
         }
 
         fn canvas_kinetic_scrolling_update(&self) {
@@ -640,6 +652,7 @@ mod imp {
                 let anchor = Rc::new(Cell::new(None::<Vector2>));
                 let angle_begin = Rc::new(Cell::new(0.0));
                 let twisting = Rc::new(Cell::new(false));
+                let previous_delta = Rc::new(Cell::new(0.0));
 
                 self.canvas_zoom_gesture.connect_begin(clone!(
                     #[strong] zoom_begin,
@@ -658,8 +671,10 @@ mod imp {
                 self.canvas_rotate_gesture.connect_begin(clone!(
                     #[strong] angle_begin,
                     #[strong] twisting,
+                    #[strong] previous_delta,
                     #[weak(rename_to=wrapper)] obj,
                     move |_, _| {
+                        previous_delta.set(0.0);
                         angle_begin.set(rotationsnap::gesture_origin(wrapper.canvas().engine_ref().camera.rotation()));
                         twisting.set(false);
                     }
@@ -686,8 +701,10 @@ mod imp {
                     #[strong] angle_begin,
                     #[strong] twisting,
                     #[weak(rename_to=wrapper)] obj,
+                    #[strong] previous_delta,
                     move |gesture, _, delta| {
-                        let signed_delta = delta.sin().atan2(delta.cos());
+                        let signed_delta = rotationsnap::continuous_delta(previous_delta.get(), delta);
+                        previous_delta.set(signed_delta);
                         // Keep ordinary pinches steady until the fingers deliberately twist.
                         if !twisting.get() && signed_delta.abs() < 4.0_f64.to_radians() { return; }
                         let (Some(document), Some((x,y))) = (anchor.get(), gesture.bounding_box_center()) else { return; };
@@ -1096,6 +1113,12 @@ impl RnCanvasWrapper {
     pub(crate) fn init_reconnect(&self, appwindow: &RnAppWindow) {
         self.imp().canvas.init_reconnect(appwindow);
 
+        if let Some(settings) = appwindow.app().app_settings() {
+            settings
+                .bind("rotation-locked", self, "rotation-locked")
+                .flags(gtk4::gio::SettingsBindFlags::GET)
+                .build();
+        }
         let appwindow_block_pinch_zoom_bind = appwindow
             .bind_property("block-pinch-zoom", self, "block_pinch_zoom")
             .sync_create()

@@ -45,6 +45,10 @@
             <attribute name="toggle" />
             <attribute name="action">win.block-pinch-zoom</attribute>
           </item>
+          <item>
+            <attribute name="label" translatable="yes">Lock Canvas _Rotation</attribute>
+            <attribute name="action">win.rotation-locked</attribute>
+          </item>
         </section>
         <section>
           <item>
@@ -125,7 +129,7 @@
             </object>
           </child>
           <child>
-            <object class="GtkBox">
+            <object class="GtkBox" id="rotation_controls">
               <property name="spacing">6</property>
               <child>
                 <object class="GtkLabel">

@@ -90,10 +90,22 @@ pub(super) fn install(wrapper: &RnCanvasWrapper) {
                     }
                 }
             ));
+            let turns = Cell::new(0u32);
             wrapper.imp().canvas_zoom_gesture.connect_end(glib::clone!(
                 #[weak] canvas, move |_, _| {
                     let engine = canvas.engine_ref();
                     eprintln!("ROTATION END {:.3} {:.3}", engine.camera.rotation().to_degrees(), engine.camera.total_zoom());
+                    let turn = turns.get() + 1;
+                    turns.set(turn);
+                    if turn == 15 || turn == 17 {
+                        // Activate the same persistent action as the Canvas menu between gestures.
+                        let weak = canvas.downgrade();
+                        glib::idle_add_local_once(move || {
+                            if let Some(canvas) = weak.upgrade() {
+                                canvas.activate_action("win.rotation-locked", None).expect("rotation lock action");
+                            }
+                        });
+                    }
                 }
             ));
         }

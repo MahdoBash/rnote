@@ -143,6 +143,11 @@
       <default>true</default>
       <summary>Whether the user is righthanded (or lefthanded)</summary>
     </key>
+    <key name="rotation-locked" type="b">
+      <default>false</default>
+      <summary>Lock canvas rotation</summary>
+      <description>Keep the current canvas angle while panning and zooming.</description>
+    </key>
     <key name="block-pinch-zoom" type="b">
       <default>false</default>
       <summary>block pinch to zoom</summary>

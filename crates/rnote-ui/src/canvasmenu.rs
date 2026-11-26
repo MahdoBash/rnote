@@ -32,6 +32,8 @@ mod imp {
         #[template_child]
         pub(crate) rotation_spin: TemplateChild<gtk4::SpinButton>,
         #[template_child]
+        pub(crate) rotation_controls: TemplateChild<gtk4::Box>,
+        #[template_child]
         pub(crate) rotation_reset_button: TemplateChild<Button>,
         #[template_child]
         pub(crate) fixedsize_quickactions_box: TemplateChild<gtk4::Box>,
@@ -103,6 +105,12 @@ impl RnCanvasMenu {
     }
 
     pub(crate) fn init(&self, appwindow: &RnAppWindow) {
+        if let Some(settings) = appwindow.app().app_settings() {
+            settings
+                .bind("rotation-locked", &*self.imp().rotation_controls, "sensitive")
+                .flags(gio::SettingsBindFlags::GET | gio::SettingsBindFlags::INVERT_BOOLEAN | gio::SettingsBindFlags::NO_SENSITIVITY)
+                .build();
+        }
         self.imp().popovermenu.connect_show(glib::clone!(
             #[weak(rename_to=menu)]
             self,
