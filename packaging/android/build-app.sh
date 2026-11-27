@@ -22,6 +22,10 @@ export "CARGO_TARGET_${upper}_RUSTFLAGS=-Lnative=$sysroot/lib/$abi -C link-arg=-
 export ANDROID_NDK="$ANDROID_NDK_HOME"
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_PROFILE_DEV_INCREMENTAL=false
 export CARGO_BUILD_JOBS=2
+java_dir="$project/app/src/main/java/com/github/flxzt/rnote"
+mkdir -p "$java_dir"
+cp packaging/android/RnoteApplication.java "$java_dir/"
+sed -i 's/android:name="org.gtk.android.RuntimeApplication"/android:name="com.github.flxzt.rnote.RnoteApplication"/' "$project/app/src/main/AndroidManifest.xml"
 python3 packaging/android/resources.py "$assets" "$sysroot"
 cargo rustc --locked --lib -p rnote --target "$target" --crate-type cdylib
 so="target/$target/debug/librnote.so"

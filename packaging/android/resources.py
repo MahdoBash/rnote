@@ -54,3 +54,16 @@ for license_file in (engine / "sounds").rglob("LICENSE*"):
     target = assets / "rnote/sounds" / license_file.relative_to(engine / "sounds")
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(license_file, target)
+
+shutil.copy2("packaging/android/fonts.conf", assets / "rnote/fonts.conf")
+
+# GTK's bundled icons only cover its own controls. Include the themed
+# symbolic icons the Rnote toolbars reference, with their original index.
+theme = Path("/usr/share/icons/Adwaita")
+dest = assets / "icons/Adwaita"
+dest.mkdir(parents=True, exist_ok=True)
+shutil.copy2(theme / "index.theme", dest)
+for icon in theme.rglob("*-symbolic.svg"):
+    target = dest / icon.relative_to(theme)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(icon, target)

@@ -1,4 +1,4 @@
-//! Preserve GTK's direct dragging; own only the Windows touch-release handoff.
+//! Preserve GTK's direct dragging; own only the touchscreen release handoff.
 //! Windows can deliver the final update and release in the same event batch,
 //! for which GtkGestureSwipe sometimes reports no velocity. One coast owner
 //! also avoids losing momentum when an infinite canvas changes its bounds.

@@ -122,6 +122,14 @@ fn setup_gresources() -> anyhow::Result<()> {
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
-pub extern "C" fn rnote_android_run() -> std::ffi::c_int {
-    run().into()
+pub unsafe extern "C" fn rnote_android_run(
+    vm: *mut std::ffi::c_void,
+    application: *mut std::ffi::c_void,
+) -> std::ffi::c_int {
+    // The GTK runtime calls main once on its application thread. The JNI shim
+    // passes the process JVM and a global reference to the Application.
+    unsafe { ndk_context::initialize_android_context(vm, application) };
+    let result = run();
+    unsafe { ndk_context::release_android_context() };
+    result.into()
 }

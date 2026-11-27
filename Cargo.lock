@@ -3944,6 +3944,7 @@ dependencies = [
  "itertools 0.15.0",
  "kurbo",
  "libadwaita",
+ "ndk-context",
  "notify-debouncer-full",
  "num-derive 0.5.1",
  "num-traits",

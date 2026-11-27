@@ -38,9 +38,6 @@
       <option>-Dgtk:build-tests=false</option>
       <option>-Dgtk:build-testsuite=false</option>
       <option>-Dgtk:build-demos=false</option>
-      <option>-Dcairo:pdf=enabled</option>
-      <option>-Dcairo:ps=enabled</option>
-      <option>-Dcairo:svg=enabled</option>
     </configure-options>
   </build>
 </app>

@@ -1,9 +1,9 @@
 mod pageposition;
 mod rotationsnap;
 mod scrolltrace;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "android"))]
 mod coast;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "android"))]
 mod touchinertia;
 
 // Imports
@@ -51,7 +51,7 @@ mod imp {
         pub(crate) page_position: Cell<Option<(u32, u32)>>,
         pub(crate) last_contextmenu_pos: Cell<Option<Vector2>>,
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "android"))]
         pub(super) touch_inertia: touchinertia::Controller,
         pub(crate) pointer_motion_controller: EventControllerMotion,
         pub(crate) canvas_drag_gesture: GestureDrag,
@@ -174,7 +174,7 @@ mod imp {
                 pointer_pos: Cell::new(None),
                 last_contextmenu_pos: Cell::new(None),
 
-                #[cfg(target_os = "windows")]
+                #[cfg(any(target_os = "windows", target_os = "android"))]
                 touch_inertia: touchinertia::Controller::default(),
                 pointer_motion_controller,
                 canvas_drag_gesture,
@@ -248,7 +248,7 @@ mod imp {
                 .group_with(&self.canvas_zoom_gesture);
 
             self.setup_input();
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "android"))]
             self.touch_inertia.install(&obj);
             super::scrolltrace::install(&obj);
             self.page_indicator_popover.connect_show(clone!(
@@ -306,7 +306,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "android"))]
             self.touch_inertia.cancel();
             self.obj().disconnect_connections();
 
@@ -430,7 +430,7 @@ mod imp {
         }
 
         fn canvas_kinetic_scrolling_update(&self) {
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "android"))]
             self.touch_inertia.cancel();
             self.scroller.set_kinetic_scrolling(
                 !self.canvas.touch_drawing() && self.inertial_scrolling.get(),
@@ -438,7 +438,7 @@ mod imp {
         }
 
         fn workaround_disable_kinetic_scrolling(&self) {
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "android"))]
             self.touch_inertia.cancel();
             let scroller = self.scroller.get();
             self.canvas

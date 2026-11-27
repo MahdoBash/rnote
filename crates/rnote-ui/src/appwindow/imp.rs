@@ -124,6 +124,26 @@ impl ObjectImpl for RnAppWindow {
             unsafe { __android_log_write(4, c"Rnote".as_ptr(), c"Notebook window mapped".as_ptr()); }
         });
 
+        #[cfg(target_os = "android")]
+        obj.connect_is_active_notify(|window| {
+            if window.is_active() {
+                return;
+            }
+            if let Err(err) = window.save_to_settings() {
+                tracing::warn!("Saving Rnote settings: {err}");
+            }
+            for tab in window.get_all_tabs() {
+                let canvas = tab.canvas();
+                if canvas.unsaved_changes() {
+                    glib::spawn_future_local(async move {
+                        if let Err(err) = canvas.save_draft().await {
+                            tracing::warn!("Saving a background draft: {err}");
+                        }
+                    });
+                }
+            }
+        });
+
         if config::PROFILE == "devel" {
             obj.add_css_class("devel");
         }
