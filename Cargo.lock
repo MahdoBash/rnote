@@ -3942,6 +3942,7 @@ dependencies = [
  "ijson",
  "image",
  "itertools 0.15.0",
+ "jni",
  "kurbo",
  "libadwaita",
  "ndk-context",

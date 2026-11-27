@@ -46,7 +46,7 @@ jobs:
         id: runtime
         with:
           path: .android-sdk-${{ matrix.arch }}
-          key: rnote-android-gtk-${{ matrix.arch }}-${{ hashFiles('packaging/android/build-runtime.sh', 'packaging/android/meson.build', 'packaging/android/app.xml.in', 'packaging/android/entry.c', 'packaging/android/launcher.xml', 'crates/rnote-ui/data/icons/scalable/apps/rnote.svg') }}
+          key: rnote-android-gtk-${{ matrix.arch }}-${{ hashFiles('packaging/android/build-runtime.sh', 'packaging/android/meson.build', 'packaging/android/app.xml.in', 'packaging/android/entry.c', 'packaging/android/chooser-name.patch', 'packaging/android/launcher.xml', 'crates/rnote-ui/data/icons/scalable/apps/rnote.svg') }}
       - name: Build the GTK and Adwaita Android runtime
         if: steps.runtime.outputs.cache-hit != 'true'
         run: bash packaging/android/build-runtime.sh "${{ matrix.arch }}"
@@ -63,7 +63,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Rnote-Android-${{ matrix.arch }}
-          path: android-dist/*.apk
+          path: |
+            android-dist/*.apk
+            android-dist/apksigner.jar
           if-no-files-found: error
       - name: Enable KVM for the emulator
         if: matrix.arch == 'x86_64'

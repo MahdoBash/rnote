@@ -1,6 +1,8 @@
 #![warn(missing_debug_implementations)]
 #![allow(clippy::single_match)]
 // Modules
+#[cfg(target_os = "android")]
+mod android_files;
 pub(crate) mod app;
 pub(crate) mod appmenu;
 pub(crate) mod appwindow;

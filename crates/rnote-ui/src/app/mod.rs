@@ -53,6 +53,8 @@ mod imp {
             let obj = self.obj();
             self.parent_startup();
             #[cfg(target_os = "android")]
+            crate::android_files::register();
+            #[cfg(target_os = "android")]
             if let Some(settings) = gtk4::Settings::default() {
                 settings.set_gtk_decoration_layout(Some(":"));
             }

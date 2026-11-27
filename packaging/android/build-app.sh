@@ -25,6 +25,9 @@ export CARGO_BUILD_JOBS=2
 java_dir="$project/app/src/main/java/com/github/flxzt/rnote"
 mkdir -p "$java_dir"
 cp packaging/android/RnoteApplication.java "$java_dir/"
+activity="$project/app/src/main/java/org/gtk/android/ToplevelActivity.java"
+# Retain only folder-tree grants returned by the system chooser.
+sed -i '/protected void onActivityResult(int requestCode, int resultCode, Intent data) {/a\        if (resultCode == RESULT_OK) com.github.flxzt.rnote.RnoteApplication.persistWorkspaceGrant(this, data);' "$activity"
 sed -i 's/android:name="org.gtk.android.RuntimeApplication"/android:name="com.github.flxzt.rnote.RnoteApplication"/' "$project/app/src/main/AndroidManifest.xml"
 python3 packaging/android/resources.py "$assets" "$sysroot"
 cargo rustc --locked --lib -p rnote --target "$target" --crate-type cdylib
@@ -33,8 +36,21 @@ so="target/$target/debug/librnote.so"
 cp "$toolchain/sysroot/usr/lib/$target/libc++_shared.so" "$native/"
 # Include notices alongside the data, fonts and sounds in the package.
 cp LICENSE "$project/app/src/main/assets/COPYING"
-(cd "$project" && ./gradlew --no-daemon assembleDebug)
+# Sign the test copy with the runner's short-lived key. The distribution
+# copy can then be signed separately without sending a private key to CI.
+(cd "$project" && ./gradlew --no-daemon assembleRelease)
 mkdir -p "$root/android-dist"
-apk=$(find "$project/app/build/outputs/apk/debug" -name "*-$abi-debug.apk" -print -quit)
+apk=$(find "$project/app/build/outputs/apk/release" -name "*-$abi-release-unsigned.apk" -print -quit)
 test -n "$apk"
-cp "$apk" "$root/android-dist/Rnote-$abi.apk"
+signer="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+if [[ "$arch" == x86_64 ]]; then
+  keytool -genkeypair -keystore "$runtime/emulator.p12" -storetype PKCS12 \
+    -storepass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 30 \
+    -dname "CN=Rnote emulator test"
+  "$signer" sign --ks "$runtime/emulator.p12" --ks-pass pass:android \
+    --out "$root/android-dist/Rnote-$abi.apk" "$apk"
+  "$signer" verify --verbose "$root/android-dist/Rnote-$abi.apk"
+else
+  cp "$apk" "$root/android-dist/Rnote-$abi-unsigned.apk"
+  cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$root/android-dist/"
+fi

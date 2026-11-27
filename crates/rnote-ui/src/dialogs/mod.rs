@@ -611,24 +611,15 @@ pub(crate) async fn dialog_edit_selected_workspace(appwindow: &RnAppWindow) {
                     .title(gettext("Change Workspace Directory"))
                     .modal(true)
                     .accept_label(gettext("Select"))
-                    .initial_file(&gio::File::for_path(preview_row.entry().dir()))
+                    .initial_file(&preview_row.entry().file())
                     .build();
 
                 match filedialog.select_folder_future(Some(&appwindow)).await {
                     Ok(selected_file) => {
-                        if let Some(p) = selected_file
-                            .path()
-                        {
-                            let path_string = p.to_string_lossy().to_string();
-                            dir_label.set_label(&path_string);
-                            preview_row.entry().set_dir(path_string);
-
-                            // Update the entry row with the file name of the new selected directory
-                            if let Some(file_name) = p.file_name().map(|n| n.to_string_lossy()) {
-                                name_entryrow.set_text(&file_name);
-                            }
-                        } else {
-                            dir_label.set_label(&gettext("- no directory selected -"));
+                        preview_row.entry().set_file(&selected_file);
+                        dir_label.set_label(&preview_row.entry().dir());
+                        if let Some(name) = selected_file.basename() {
+                            name_entryrow.set_text(&name.to_string_lossy());
                         }
                     }
                     Err(e) => {

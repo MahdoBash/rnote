@@ -68,10 +68,14 @@ pub(crate) async fn create_replace_file_future(
     if !file.is_native() {
         // A Storage Access Framework URI can expose a path-like document ID.
         // Only its provider has permission to open or truncate that document.
-        file.replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
-            .await
-            .map_err(|(_, err)| err)
-            .context("Could not write the selected document")?;
+        if let Err((bytes, err)) = file.replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE).await {
+            if !err.matches(gio::IOErrorEnum::NotFound) {
+                return Err(err).context("Could not write the selected document");
+            }
+            // A child of a newly selected output folder may not exist yet.
+            file.replace_contents_future(bytes, None, false, gio::FileCreateFlags::REPLACE_DESTINATION)
+                .await.map_err(|(_, err)| err).context("Could not create the selected document")?;
+        }
         return Ok(());
     }
     let Some(file_path) = file.path() else {

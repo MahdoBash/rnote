@@ -103,10 +103,8 @@ mod imp {
             }
             #[cfg(not(target_os = "android"))]
             {
-            self.toolbar_overlay
-                .set_measure_overlay(&*self.colorpicker, true);
-            self.toolbar_overlay
-                .set_measure_overlay(&*self.penpicker, true);
+                self.toolbar_overlay.set_measure_overlay(&*self.colorpicker, true);
+                self.toolbar_overlay.set_measure_overlay(&*self.penpicker, true);
             }
             self.toolbar_overlay
                 .set_measure_overlay(&*self.sidebar_box, true);

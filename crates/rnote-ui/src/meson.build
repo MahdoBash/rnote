@@ -72,6 +72,7 @@ rnote_ui_sources = files(
     'groupediconpicker/group.rs',
     'groupediconpicker/mod.rs',
     'iconpicker.rs',
+    'android_files.rs',
     'lib.rs',
     'main.rs',
     'mainheader.rs',

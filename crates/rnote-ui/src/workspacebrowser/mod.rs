@@ -177,18 +177,18 @@ impl RnWorkspaceBrowser {
     }
 
     pub(crate) fn dir_list_dir(&self) -> Option<PathBuf> {
-        self.imp().dir_list.file().and_then(|f| f.path())
+        self.imp().dir_list.file().filter(|f| f.is_native()).and_then(|f| f.path())
     }
 
     pub(crate) fn refresh_dir_list_selected_workspace(&self) {
         if let Some(current_workspace_dir) = self
             .workspacesbar()
             .selected_workspacelistentry()
-            .map(|e| PathBuf::from(e.dir()))
+            .map(|e| e.file())
         {
             self.imp()
                 .dir_list
-                .set_file(Some(&gio::File::for_path(current_workspace_dir)));
+                .set_file(Some(&current_workspace_dir));
         }
     }
 
@@ -215,7 +215,7 @@ impl RnWorkspaceBrowser {
                     };
                 }
                 if let Some(parent) = dir.parent().map(|p| p.to_path_buf()) {
-                    workspacebrowser.workspacesbar().set_selected_workspace_dir(parent);
+                    workspacebrowser.workspacesbar().set_selected_workspace_file(&gio::File::for_path(parent));
                 } else {
                     warn!("Can't move directory up from dir {dir:?} from workspacelistentry, has no parent.");
                 }

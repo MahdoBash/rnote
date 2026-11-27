@@ -1,0 +1,24 @@
+--- a/gtk/gtkfilechoosernativeandroid.c
++++ b/gtk/gtkfilechoosernativeandroid.c
+@@ -139,6 +139,21 @@
+                             gdk_android_get_java_cache ()->a_intent.extra_allow_multiple,
+                             gtk_file_chooser_get_select_multiple ((GtkFileChooser *)self->dialog));
+
++  if (action == GTK_FILE_CHOOSER_ACTION_SAVE)
++    {
++      char *name = gtk_file_chooser_get_current_name (GTK_FILE_CHOOSER (self->dialog));
++      if (name && *name)
++        {
++          jclass klass = gdk_android_get_java_cache ()->a_intent.klass;
++          jmethodID put_extra = (*env)->GetMethodID (env, klass, "putExtra",
++            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;");
++          (*env)->CallObjectMethod (env, intent, put_extra,
++                                    (*env)->NewStringUTF (env, "android.intent.extra.TITLE"),
++                                    gdk_android_utf8_to_java (name));
++        }
++      g_free (name);
++    }
++
+   if (action != GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER)
+     {
+       GListModel *filters = gtk_file_chooser_get_filters ((GtkFileChooser *)self);

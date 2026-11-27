@@ -16,3 +16,5 @@ done
 adb logcat -d -s 'Rnote:I' | grep 'Notebook window mapped'
 adb shell pidof "$package"
 adb exec-out screencap -p > "$results/notebook.png"
+
+python3 packaging/android/test-notebook.py

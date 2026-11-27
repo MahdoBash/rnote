@@ -66,4 +66,5 @@ glib-build-tools = { workspace = true }
 winresource = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
 ndk-context = "0.1.1"

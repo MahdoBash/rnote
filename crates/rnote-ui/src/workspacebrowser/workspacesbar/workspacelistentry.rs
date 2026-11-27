@@ -2,7 +2,7 @@
 use self::imp::RnWorkspaceListEntryInner;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{gdk, glib};
+use gtk4::{gdk, gio, glib};
 use once_cell::sync::Lazy;
 use rnote_compose::color;
 use rnote_engine::ext::GdkRGBAExt;
@@ -166,6 +166,20 @@ impl RnWorkspaceListEntry {
         self.property::<String>("dir")
     }
 
+    pub(crate) fn file(&self) -> gio::File {
+        gio::File::for_commandline_arg(self.dir())
+    }
+
+    pub(crate) fn set_file(&self, file: &gio::File) {
+        if file.is_native() {
+            if let Some(path) = file.path() {
+                self.set_dir(path.display().to_string());
+            }
+        } else {
+            self.set_dir(file.uri().to_string());
+        }
+    }
+
     pub(crate) fn set_dir(&self, dir: String) {
         self.set_property("dir", dir.to_value());
     }
@@ -195,6 +209,13 @@ impl RnWorkspaceListEntry {
     }
 
     pub(crate) fn ensure_dir(&self) -> anyhow::Result<()> {
+        #[cfg(target_os = "android")]
+        if self.dir() == "./" || self.dir() == "." {
+            self.set_dir(RnWorkspaceListEntryInner::default().dir.display().to_string());
+        }
+        if !self.file().is_native() {
+            return Ok(());
+        }
         let p = crate::utils::path_walk_up_until_exists(self.dir())?;
         self.set_dir(p.to_string_lossy().to_string());
         Ok(())

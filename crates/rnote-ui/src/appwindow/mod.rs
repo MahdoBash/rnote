@@ -764,12 +764,8 @@ impl RnAppWindow {
                 Some(wrapper)
             }
             FileType::Folder => {
-                if let Some(dir) = input_file.path() {
-                    self.sidebar()
-                        .workspacebrowser()
-                        .workspacesbar()
-                        .set_selected_workspace_dir(dir);
-                }
+                self.sidebar().workspacebrowser().workspacesbar()
+                    .set_selected_workspace_file(&input_file);
                 None
             }
             FileType::Unsupported => {
