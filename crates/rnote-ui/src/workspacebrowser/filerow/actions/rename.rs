@@ -19,13 +19,11 @@ pub(crate) fn rename(filerow: &RnFileRow, appwindow: &RnAppWindow) -> gio::Simpl
             let Some(current_file) = filerow.current_file() else {
                 return;
             };
-            let Some(current_file_path) = current_file.path() else {
+            let Some(name) = current_file.basename() else { return; };
+            let Some(parent) = current_file.parent().or_else(|| appwindow.sidebar().workspacebrowser().dir_list_file()) else {
                 return;
             };
-            let Some(parent_path) = current_file_path.parent().map(|p| p.to_path_buf()) else {
-                return;
-            };
-            let entry = create_entry(&current_file_path);
+            let entry = create_entry(&name);
             let label = create_label();
             let (apply_button, popover) = widgethelper::create_entry_dialog(&entry, &label);
             filerow.menubutton_box().append(&popover);
@@ -35,13 +33,13 @@ pub(crate) fn rename(filerow: &RnFileRow, appwindow: &RnAppWindow) -> gio::Simpl
 
             entry.connect_text_notify(clone!(
                 #[strong]
-                parent_path,
+                parent,
                 #[weak]
                 apply_button,
                 move |entry2| {
-                    let new_file_path = parent_path.join(entry2.text());
-                    // Disable apply button to prevent overwrites when file already exists
-                    apply_button.set_sensitive(!new_file_path.exists());
+                    let name = entry2.text();
+                    apply_button.set_sensitive(!name.is_empty() && !name.contains('/')
+                        && parent.child_for_display_name(&name).is_ok_and(|f| !f.query_exists(gio::Cancellable::NONE)));
                 }
             ));
 
@@ -53,30 +51,31 @@ pub(crate) fn rename(filerow: &RnFileRow, appwindow: &RnAppWindow) -> gio::Simpl
                 #[weak]
                 appwindow,
                 move |_| {
-                    let new_file_path = parent_path.join(entry.text());
+                    let name = entry.text();
+                    let Ok(target) = parent.child_for_display_name(&name) else { return; };
 
-                    if new_file_path.exists() {
+                    if target.query_exists(gio::Cancellable::NONE) {
                         appwindow.overlays().dispatch_toast_error(&gettext(
                             "Renaming file failed, target file already exists",
                         ));
                         debug!(
                             "Renaming file with path '{}' failed, target file already exists",
-                            new_file_path.display()
+                            crate::utils::file_label(&target)
                         );
                     } else {
                         glib::spawn_future_local(clone!(
                             #[strong]
-                            current_file_path,
+                            current_file,
                             #[weak]
                             appwindow,
                             async move {
                                 appwindow.overlays().progressbar_start_pulsing();
                                 if let Err(e) =
-                                    async_fs::rename(&current_file_path, &new_file_path).await
+                                    current_file.set_display_name_future(&name, glib::Priority::DEFAULT).await
                                 {
                                     error!(
                                         "Renaming file with path `{}` failed, Err: {e:?}",
-                                        new_file_path.display()
+                                        crate::utils::file_label(&target)
                                     );
                                     appwindow
                                         .overlays()

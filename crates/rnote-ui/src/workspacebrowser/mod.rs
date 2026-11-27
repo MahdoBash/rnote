@@ -429,8 +429,9 @@ fn create_files_list_row_factory(appwindow: &RnAppWindow) -> SignalListItemFacto
                             .downcast::<gio::FileInfo>()
                             .unwrap()
                             .attribute_object("standard::icon")
+                        && let Ok(themed_icon) = themed_icon.downcast::<gio::ThemedIcon>()
                     {
-                        return themed_icon.downcast::<gio::ThemedIcon>().unwrap();
+                        return themed_icon;
                     }
 
                     gio::ThemedIcon::from_names(&[

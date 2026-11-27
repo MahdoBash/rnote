@@ -24,11 +24,13 @@ export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_PROFILE_DEV
 export CARGO_BUILD_JOBS=2
 java_dir="$project/app/src/main/java/com/github/flxzt/rnote"
 mkdir -p "$java_dir"
-cp packaging/android/{RnoteApplication,NotebookPrintAdapter}.java "$java_dir/"
+cp packaging/android/{RnoteApplication,NotebookPrintAdapter,NotebooksProvider}.java "$java_dir/"
 activity="$project/app/src/main/java/org/gtk/android/ToplevelActivity.java"
 # Retain only folder-tree grants returned by the system chooser.
 sed -i '/protected void onActivityResult(int requestCode, int resultCode, Intent data) {/a\        if (resultCode == RESULT_OK) com.github.flxzt.rnote.RnoteApplication.persistWorkspaceGrant(this, data);' "$activity"
 sed -i 's/android:name="org.gtk.android.RuntimeApplication"/android:name="com.github.flxzt.rnote.RnoteApplication"/' "$project/app/src/main/AndroidManifest.xml"
+manifest="$project/app/src/main/AndroidManifest.xml"
+sed -i '/<\/application>/i\    <provider android:name="com.github.flxzt.rnote.NotebooksProvider" android:authorities="com.github.flxzt.rnote.notebooks" android:permission="android.permission.MANAGE_DOCUMENTS" android:grantUriPermissions="true" android:exported="true"><intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER"/></intent-filter></provider>' "$manifest"
 python3 packaging/android/resources.py "$assets" "$sysroot"
 cargo rustc --locked --lib -p rnote --target "$target" --crate-type cdylib
 so="target/$target/debug/librnote.so"

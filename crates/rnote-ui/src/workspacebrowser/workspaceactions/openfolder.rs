@@ -14,6 +14,11 @@ pub(crate) fn open_folder(
         #[weak]
         appwindow,
         move |_, _| {
+        #[cfg(target_os = "android")]
+        if let Some(folder) = workspacebrowser.dir_list_file() {
+            crate::android_files::view(&folder, &appwindow);
+        }
+        #[cfg(not(target_os = "android"))]
         if let Some(parent_path) = workspacebrowser.dir_list_file().and_then(|f| f.path()) {
             if let Err(e) = open::that_detached(&parent_path) {
                 let path_string =   &parent_path.into_os_string().into_string().ok().unwrap_or(String::from("Failed to get the path of the workspace folder"));

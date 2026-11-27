@@ -73,3 +73,32 @@ pub(crate) async fn print(window: &crate::RnAppWindow) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+
+/// Use a grantable URI for notebooks stored in the app workspace as well as
+/// files opened from Android's document picker.
+pub(crate) fn view(file: &gio::File, window: &crate::RnAppWindow) {
+    let file = file.clone();
+    let window = window.clone();
+    gtk4::glib::spawn_future_local(async move {
+        let result: anyhow::Result<()> = async {
+            let document = if file.is_native() {
+                let root = gtk4::glib::user_data_dir().join("Notebooks").canonicalize()?;
+                let path = file.path().ok_or_else(|| anyhow::anyhow!("Missing notebook path"))?.canonicalize()?;
+                let relative = path.strip_prefix(root)?;
+                let id = if relative.as_os_str().is_empty() { "notebooks".into() } else { format!("notebooks/{}", relative.display()) };
+                let mut uri = url::Url::parse("content://com.github.flxzt.rnote.notebooks/document")?;
+                uri.path_segments_mut().expect("Content URI has an authority").push(&id);
+                gio::File::for_uri(uri.as_str())
+            } else {
+                file
+            };
+            gtk4::FileLauncher::new(Some(&document)).launch_future(Some(&window)).await?;
+            Ok(())
+        }.await;
+        if let Err(error) = result {
+            tracing::warn!("Opening with another Android app: {error}");
+            window.overlays().dispatch_toast_error(&gettextrs::gettext("Open the file in the default app failed"));
+        }
+    });
+}

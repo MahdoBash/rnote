@@ -167,6 +167,14 @@ pub(crate) fn paths_abs_eq(
     Ok(first == second)
 }
 
+/// Native files have a user-visible path. A provider supplies a display name instead.
+pub(crate) fn file_label(file: &gio::File) -> String {
+    if file.is_native() && let Some(path) = file.path() {
+        return path.display().to_string();
+    }
+    file.basename().map(|p| p.display().to_string()).unwrap_or_else(|| file.uri().to_string())
+}
+
 /// Compare provider document identities, retaining absolute path matching for local files.
 pub(crate) fn same_file(first: &gio::File, second: &gio::File) -> bool {
     first.equal(second) || (first.is_native() && second.is_native()

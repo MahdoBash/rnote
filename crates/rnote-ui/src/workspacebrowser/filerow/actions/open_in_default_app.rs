@@ -20,6 +20,9 @@ pub(crate) fn open_in_default_app(
             let Some(current_file) = filerow.current_file() else {
                 return;
             };
+            #[cfg(target_os = "android")]
+            crate::android_files::view(&current_file, &appwindow);
+            #[cfg(not(target_os = "android"))]
             if let Err(e) = open::that_detached(current_file.uri()) {
                 appwindow
                     .overlays()

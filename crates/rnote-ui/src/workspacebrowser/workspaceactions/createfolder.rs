@@ -18,7 +18,7 @@ pub(crate) fn create_folder(
         #[weak]
         appwindow,
         move |_, _| {
-            if let Some(parent_path) = workspacebrowser.dir_list_file().and_then(|f| f.path()) {
+            if let Some(parent) = workspacebrowser.dir_list_file() {
                 let folder_name_entry = create_folder_name_entry();
                 let dialog_title_label = create_dialog_title_label();
                 let (apply_button, popover) =
@@ -33,12 +33,13 @@ pub(crate) fn create_folder(
                     #[weak]
                     apply_button,
                     #[strong]
-                    parent_path,
+                    parent,
                     move |entry| {
                         let entry_text = entry.text();
-                        let new_folder_path = parent_path.join(&entry_text);
-
-                        if new_folder_path.exists() || entry_text.is_empty() {
+                        let available = !entry_text.is_empty() && !entry_text.contains('/')
+                            && parent.child_for_display_name(&entry_text)
+                                .is_ok_and(|file| !file.query_exists(gio::Cancellable::NONE));
+                        if !available {
                             apply_button.set_sensitive(false);
                             entry.add_css_class("error");
                         } else {
@@ -57,9 +58,9 @@ pub(crate) fn create_folder(
                     #[weak]
                     appwindow,
                     move |_| {
-                        let new_folder_path = parent_path.join(folder_name_entry.text().as_str());
+                        let Ok(folder) = parent.child_for_display_name(&folder_name_entry.text()) else { return; };
 
-                        if new_folder_path.exists() {
+                        if folder.query_exists(gio::Cancellable::NONE) {
                             // Should have been caught earlier, but making sure
                             appwindow
                                 .overlays()
@@ -69,7 +70,7 @@ pub(crate) fn create_folder(
                                 folder_name_entry.text().as_str()
                             );
                         } else {
-                            if let Err(e) = fs_extra::dir::create(new_folder_path, false) {
+                            if let Err(e) = folder.make_directory(gio::Cancellable::NONE) {
                                 appwindow
                                     .overlays()
                                     .dispatch_toast_error("Creating new folder failed");

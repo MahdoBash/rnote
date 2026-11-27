@@ -72,7 +72,9 @@ adb("shell", "input", "text", filename)
 tap(picker_node(lambda n: n["text"].upper() == "SAVE" and n["enabled"] == "true"))
 remote = ""
 for _ in range(15):
-    found = adb("shell", "find", "/sdcard/Download", "/sdcard/Documents", "-iname", filename).splitlines()
+    found = adb("shell", "for base in /sdcard/Download /sdcard/Documents "
+                "/sdcard/Android/data/com.github.flxzt.rnote/files/share/Notebooks; do "
+                f'if [ -d "$base" ]; then find "$base" -iname {filename}; fi; done').splitlines()
     remote = next((line.strip() for line in found if line.strip().endswith(filename)), "")
     if remote:
         break

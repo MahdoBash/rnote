@@ -18,6 +18,25 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use tracing::{debug, error};
 
+fn open_export_location(file: &gio::File, window: &RnAppWindow, is_directory: bool) {
+    #[cfg(target_os = "android")]
+    {
+        let _ = is_directory;
+        crate::android_files::view(file, window);
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let folder = if is_directory { Some(file.clone()) } else { file.parent() };
+        let result = folder.and_then(|f| f.path()).ok_or_else(||
+            std::io::Error::new(std::io::ErrorKind::NotFound, "Missing export directory")
+        ).and_then(open::that_detached);
+        if let Err(err) = result {
+            error!("Opening the export directory failed: {err}");
+            window.overlays().dispatch_toast_error(&gettext("Failed to view the file in the file manager"));
+        }
+    }
+}
+
 pub(crate) async fn dialog_save_doc_as(appwindow: &RnAppWindow, canvas: &RnCanvas) {
     // note : mimetypes are not supported with the native file picker on windows
     // See the limitations on FileChooserNative
@@ -49,8 +68,8 @@ pub(crate) async fn dialog_save_doc_as(appwindow: &RnAppWindow, canvas: &RnCanva
     if let Some(output_file) = canvas.output_file() {
         filedialog.set_initial_file(Some(&output_file));
     } else {
-        if let Some(current_workspace_dir) = appwindow.sidebar().workspacebrowser().dir_list_dir() {
-            filedialog.set_initial_folder(Some(&gio::File::for_path(current_workspace_dir)));
+        if let Some(current_workspace_dir) = appwindow.sidebar().workspacebrowser().dir_list_file() {
+            filedialog.set_initial_folder(Some(&current_workspace_dir));
         }
 
         let file_name = canvas.doc_title_display() + ".rnote";
@@ -150,15 +169,9 @@ pub(crate) async fn dialog_export_doc_w_prefs(appwindow: &RnAppWindow, canvas: &
                     create_filedialog_export_doc(&appwindow, &canvas, &doc_export_prefs);
                 match filedialog.save_future(Some(&appwindow)).await {
                     Ok(f) => {
-                        if let Some(path_string) = f.path().map(|p| p.to_string_lossy().to_string()) {
-                            export_file_label.set_label(&path_string);
-                            button_confirm.set_sensitive(true);
-                            selected_file.replace(Some(f));
-                        } else {
-                            export_file_label.set_label(&gettext("- no file selected -"));
-                            button_confirm.set_sensitive(false);
-                            selected_file.replace(None);
-                        }
+                        export_file_label.set_label(&crate::utils::file_label(&f));
+                        button_confirm.set_sensitive(true);
+                        selected_file.replace(Some(f));
                     }
                     Err(e) => {
                         debug!("Did not export document (Error or dialog dismissed by user), Err: {e:?}");
@@ -312,22 +325,9 @@ pub(crate) async fn dialog_export_doc_w_prefs(appwindow: &RnAppWindow, canvas: &
 
             appwindow.overlays().dispatch_toast_w_button(
                 &gettext("Exported document successfully"),
-                &gettext("View in file manager"),
+                &gettext(if cfg!(target_os = "android") { "Open" } else { "View in file manager" }),
                 clone!(#[weak] appwindow , move |_reload_toast| {
-                    let Some(folder_path_string) = file
-                        .parent()
-                        .and_then(|p|
-                            p.path())
-                        .and_then(|p| p.into_os_string().into_string().ok()) else {
-                            error!("Failed to get the parent folder of the output file `{file:?}.");
-                            appwindow.overlays().dispatch_toast_error(&gettext("Failed to view the file in the file manager"));
-                            return;
-                    };
-
-                    if let Err(e) = open::that_detached(&folder_path_string) {
-                        error!("Opening the parent folder '{folder_path_string}' in the file manager failed, Err: {e:?}");
-                        appwindow.overlays().dispatch_toast_error(&gettext("Failed to view the file in the file manager"));
-                    }
+                    open_export_location(&file, &appwindow, false);
                 }
             ), crate::overlays::TEXT_TOAST_TIMEOUT_DEFAULT);
             appwindow.overlays().progressbar_finish();
@@ -514,15 +514,9 @@ pub(crate) async fn dialog_export_doc_pages_w_prefs(appwindow: &RnAppWindow, can
                 );
                 match filedialog.select_folder_future(Some(&appwindow)).await {
                     Ok(f) => {
-                        if let Some(path_string) = f.path().map(|p| p.to_string_lossy().to_string()) {
-                            export_dir_label.set_label(&path_string);
-                            button_confirm.set_sensitive(true);
-                            selected_file.replace(Some(f));
-                        } else {
-                            export_dir_label.set_label(&gettext("- no directory selected -"));
-                            button_confirm.set_sensitive(false);
-                            selected_file.replace(None);
-                        }
+                        export_dir_label.set_label(&crate::utils::file_label(&f));
+                        button_confirm.set_sensitive(true);
+                        selected_file.replace(Some(f));
                     }
                     Err(e) => {
                         debug!("Did not export document pages (Error or dialog dismissed by user), Err: {e:?}");
@@ -744,16 +738,7 @@ pub(crate) async fn dialog_export_doc_pages_w_prefs(appwindow: &RnAppWindow, can
                 &gettext("Exported document pages successfully"),
                 &gettext("View in file manager"),
                 clone!(#[weak] appwindow,  move |_reload_toast| {
-                    let Some(folder_path_string) = dir.path().and_then(|p| p.into_os_string().into_string().ok()) else {
-                        error!("Failed to get the path of the parent folder");
-                        appwindow.overlays().dispatch_toast_error(&gettext("Failed to view the file in the file manager"));
-                        return;
-                    };
-
-                    if let Err(e) = open::that_detached(&folder_path_string) {
-                        error!("Opening the parent folder '{folder_path_string}' in the file manager failed, Err: {e:?}");
-                        appwindow.overlays().dispatch_toast_error(&gettext("Failed to view the file in the file manager"));
-                    }
+                    open_export_location(&dir, &appwindow, true);
                 }
             ), crate::overlays::TEXT_TOAST_TIMEOUT_DEFAULT);
             appwindow.overlays().progressbar_finish();
@@ -913,15 +898,9 @@ pub(crate) async fn dialog_export_selection_w_prefs(appwindow: &RnAppWindow, can
                 );
                 match filedialog.save_future(Some(&appwindow)).await {
                     Ok(f) => {
-                        if let Some(path_string) = f.path().map(|p| p.to_string_lossy().to_string()) {
-                            export_file_label.set_label(&path_string);
-                            button_confirm.set_sensitive(true);
-                            selected_file.replace(Some(f));
-                        } else {
-                            export_file_label.set_label(&gettext("- no file selected -"));
-                            button_confirm.set_sensitive(false);
-                            selected_file.replace(None);
-                        }
+                        export_file_label.set_label(&crate::utils::file_label(&f));
+                        button_confirm.set_sensitive(true);
+                        selected_file.replace(Some(f));
                     }
                     Err(e) => {
                         debug!("Did not export selection (Error or dialog dismissed by user), Err: {e:?}");
@@ -1104,22 +1083,9 @@ pub(crate) async fn dialog_export_selection_w_prefs(appwindow: &RnAppWindow, can
 
             appwindow.overlays().dispatch_toast_w_button(
                 &gettext("Exported selection successfully"),
-                &gettext("View in file manager"),
+                &gettext(if cfg!(target_os = "android") { "Open" } else { "View in file manager" }),
                 clone!(#[weak] appwindow , move |_| {
-                    let Some(folder_path_string) = file
-                        .parent()
-                        .and_then(|p|
-                            p.path())
-                        .and_then(|p| p.into_os_string().into_string().ok()) else {
-                            error!("Failed to get the parent folder of the output file `{file:?}.");
-                            appwindow.overlays().dispatch_toast_error(&gettext("Failed to view the file in the file manager"));
-                            return;
-                    };
-
-                    if let Err(e) = open::that_detached(&folder_path_string) {
-                        error!("Opening the parent folder '{folder_path_string}' in the file manager failed, Err: {e:?}");
-                        appwindow.overlays().dispatch_toast_error(&gettext("Failed to view the file in the file manager"));
-                    }
+                    open_export_location(&file, &appwindow, false);
                 }),
                 crate::overlays::TEXT_TOAST_TIMEOUT_DEFAULT,
             );
@@ -1151,8 +1117,7 @@ fn get_initial_folder_for_export(appwindow: &RnAppWindow, canvas: &RnCanvas) -> 
             appwindow
                 .sidebar()
                 .workspacebrowser()
-                .dir_list_dir()
-                .map(gio::File::for_path)
+                .dir_list_file()
         })
 }
 

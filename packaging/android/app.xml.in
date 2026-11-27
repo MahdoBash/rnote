@@ -34,6 +34,11 @@
   <build target="rnote">
     <architectures><arch>@ARCH@</arch></architectures>
     <configure-options>
+      <option>-Dfontconfig:tests=disabled</option>
+      <option>-Dfontconfig:tools=disabled</option>
+      <option>-Dfontconfig:cache-build=disabled</option>
+      <option>-Dlibadwaita:tests=false</option>
+      <option>-Dlibadwaita:examples=false</option>
       <option>-Dgtk:vulkan=disabled</option>
       <option>-Dgtk:build-tests=false</option>
       <option>-Dgtk:build-testsuite=false</option>
