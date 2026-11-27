@@ -57,6 +57,7 @@ rnote_ui_sources = files(
     'windows_surfaces.rs',
     'screenpicker_win.rs',
     'window_shadow_win.rs',
+    'colorpicker/android.rs',
     'colorpicker/colorpad.rs',
     'colorpicker/colorsetter.rs',
     'colorpicker/mod.rs',

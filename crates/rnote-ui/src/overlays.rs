@@ -74,10 +74,40 @@ mod imp {
     impl WidgetImpl for RnOverlays {}
     impl RnOverlays {
         fn setup_toolbar_overlay(&self) {
+            #[cfg(target_os = "android")]
+            {
+                // Keep the complete desktop toolbars on tablets. On phones the
+                // toolbar itself scrolls horizontally, independently of the page.
+                for bar in [self.colorpicker.get().upcast::<Widget>(), self.penpicker.get().upcast()] {
+                    let scroll = ScrolledWindow::builder()
+                        .halign(gtk4::Align::Center)
+                        .valign(bar.valign())
+                        .margin_start(bar.margin_start())
+                        .margin_end(bar.margin_end())
+                        .margin_top(bar.margin_top())
+                        .margin_bottom(bar.margin_bottom())
+                        .hscrollbar_policy(gtk4::PolicyType::Automatic)
+                        .vscrollbar_policy(gtk4::PolicyType::Never)
+                        .propagate_natural_width(true)
+                        .propagate_natural_height(true)
+                        .build();
+                    self.toolbar_overlay.remove_overlay(&bar);
+                    bar.set_margin_start(0);
+                    bar.set_margin_end(0);
+                    bar.set_margin_top(0);
+                    bar.set_margin_bottom(0);
+                    bar.bind_property("visible", &scroll, "visible").sync_create().build();
+                    scroll.set_child(Some(&bar));
+                    self.toolbar_overlay.add_overlay(&scroll);
+                }
+            }
+            #[cfg(not(target_os = "android"))]
+            {
             self.toolbar_overlay
                 .set_measure_overlay(&*self.colorpicker, true);
             self.toolbar_overlay
                 .set_measure_overlay(&*self.penpicker, true);
+            }
             self.toolbar_overlay
                 .set_measure_overlay(&*self.sidebar_box, true);
         }

@@ -115,6 +115,24 @@ impl ObjectImpl for RnAppWindow {
         let obj = self.obj();
         let _windowsettings = obj.settings();
         #[cfg(target_os = "android")]
+        {
+            obj.set_size_request(280, 240);
+            self.split_view.set_min_sidebar_width(280.0);
+            obj.connect_realize(|window| {
+                if let Some(surface) = window.surface() {
+                    let update = glib::clone!(#[weak] window, move |width: i32| {
+                        if width < 680 {
+                            window.add_css_class("narrow-notebook");
+                        } else {
+                            window.remove_css_class("narrow-notebook");
+                        }
+                    });
+                    update(surface.width());
+                    surface.connect_layout(move |_, width, _| update(width));
+                }
+            });
+        }
+        #[cfg(target_os = "android")]
         obj.connect_map(|_| {
             #[link(name = "log")]
             unsafe extern "C" {

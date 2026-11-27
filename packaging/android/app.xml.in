@@ -29,7 +29,7 @@
     <glib revision="2.90.1"><patch>hack</patch></glib>
     <fontconfig/>
     <gtk revision="4.24.1"/>
-    <libadwaita revision="1.9.0"/>
+    <libadwaita revision="1.10.0"/>
   </dependencies>
   <build target="rnote">
     <architectures><arch>@ARCH@</arch></architectures>

@@ -1,4 +1,6 @@
 // Modules
+#[cfg(target_os = "android")]
+mod android;
 mod colorpad;
 mod colorsetter;
 
@@ -580,6 +582,8 @@ impl RnColorPicker {
                 }
             ));
         }
+        #[cfg(target_os = "android")]
+        android::install(&actions, _appwindow, &chooser, &popover);
         let palette = Button::with_label(&gettextrs::gettext("Palette"));
         chooser.bind_property("show-editor", &palette, "visible").sync_create().build();
         palette.connect_clicked(clone!(#[weak] chooser, move |_| chooser.set_show_editor(false)));
@@ -689,7 +693,7 @@ impl RnColorPicker {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "android"))]
 fn hide_builtin_eyedropper(widget: &Widget) -> bool {
     if let Some(button) = widget.downcast_ref::<Button>() {
         if button.icon_name().as_deref() == Some("color-select-symbolic") {

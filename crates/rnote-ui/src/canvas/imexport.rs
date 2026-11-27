@@ -1,7 +1,7 @@
-use anyhow::Context;
 // Imports
 use super::RnCanvas;
 use crate::RnAppWindow;
+use anyhow::Context;
 use futures::channel::oneshot;
 use gtk4::{gio, prelude::*};
 use p2d::math::Vector2;
