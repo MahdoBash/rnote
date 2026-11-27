@@ -27,6 +27,9 @@ pub(crate) async fn filedialog_open_doc(appwindow: &RnAppWindow) {
     } else {
         filter.add_mime_type("application/rnote");
     }
+    // Android document providers often report custom notebook formats as binary.
+    #[cfg(target_os = "android")]
+    filter.add_mime_type("application/octet-stream");
     filter.add_suffix("rnote");
     filter.set_name(Some(&gettext(".rnote")));
 
@@ -77,6 +80,9 @@ pub(crate) async fn filedialog_import_file(appwindow: &RnAppWindow) {
         filter.add_mime_type("image/jpeg");
         filter.add_mime_type("text/plain");
     }
+    // Android document providers often report custom notebook formats as binary.
+    #[cfg(target_os = "android")]
+    filter.add_mime_type("application/octet-stream");
     filter.add_suffix("xopp");
     filter.add_suffix("pdf");
     filter.add_suffix("svg");

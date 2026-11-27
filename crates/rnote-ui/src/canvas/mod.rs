@@ -1054,9 +1054,14 @@ impl RnCanvas {
     pub(crate) fn doc_folderpath_display(&self) -> String {
         self.output_file()
             .map(|f| {
-                f.parent()
-                    .and_then(|p| Some(p.path()?.display().to_string()))
-                    .unwrap_or_else(|| gettext("- invalid folder path -"))
+                if f.is_native() {
+                    f.parent().and_then(|p| p.path())
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| gettext("- invalid folder path -"))
+                } else {
+                    f.parent().and_then(|p| p.basename())
+                        .map(|p| p.display().to_string()).unwrap_or_default()
+                }
             })
             .unwrap_or_else(|| OUTPUT_FILE_NEW_SUBTITLE.to_string())
     }
@@ -1086,6 +1091,10 @@ impl RnCanvas {
     }
 
     pub(crate) fn create_output_file_watcher(&self, file: &gio::File, appwindow: &RnAppWindow) {
+        if !file.is_native() {
+            self.clear_output_file_watcher();
+            return;
+        }
         let dispatch_toast_reload_modified_file = |appwindow: &RnAppWindow, canvas: &RnCanvas| {
             canvas.set_unsaved_changes(true);
 

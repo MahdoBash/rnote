@@ -65,6 +65,15 @@ pub(crate) async fn create_replace_file_future(
     bytes: Vec<u8>,
     file: &gio::File,
 ) -> anyhow::Result<()> {
+    if !file.is_native() {
+        // A Storage Access Framework URI can expose a path-like document ID.
+        // Only its provider has permission to open or truncate that document.
+        file.replace_contents_future(bytes, None, false, gio::FileCreateFlags::NONE)
+            .await
+            .map_err(|(_, err)| err)
+            .context("Could not write the selected document")?;
+        return Ok(());
+    }
     let Some(file_path) = file.path() else {
         return Err(anyhow::anyhow!(
             "Can't create-replace file that has no path."
@@ -152,6 +161,12 @@ pub(crate) fn paths_abs_eq(
     let first = first.as_ref().absolutize()?.into_owned();
     let second = second.as_ref().absolutize()?.into_owned();
     Ok(first == second)
+}
+
+/// Compare provider document identities, retaining absolute path matching for local files.
+pub(crate) fn same_file(first: &gio::File, second: &gio::File) -> bool {
+    first.equal(second) || (first.is_native() && second.is_native()
+        && first.path().zip(second.path()).is_some_and(|(a, b)| paths_abs_eq(a, b).unwrap_or(false)))
 }
 
 /// Wrapper type that enables iterating over [`std::cell::RefCell<Vec<T>>`]

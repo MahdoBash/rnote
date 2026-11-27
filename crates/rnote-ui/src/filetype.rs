@@ -61,9 +61,9 @@ impl FileType {
         }
 
         // match on file extensions as fallback
-        if let Some(path) = file.path() {
+        if let Some(path) = file.basename() {
             if let Some(extension_str) = path.extension() {
-                match &*extension_str.to_string_lossy() {
+                match extension_str.to_string_lossy().to_ascii_lowercase().as_str() {
                     "rnote" => {
                         return Self::RnoteFile;
                     }
