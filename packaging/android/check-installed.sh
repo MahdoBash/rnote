@@ -7,6 +7,7 @@ trap 'adb logcat -d > "$results/logcat.txt"; adb shell dumpsys activity activiti
 adb install -r android-dist/Rnote-x86_64.apk
 adb shell wm size 1280x1800
 adb shell wm density 220
+adb shell mkdir -p /sdcard/Documents /sdcard/Download
 adb logcat -c
 adb shell am start -W -n "$package/org.gtk.android.ToplevelActivity"
 for attempt in $(seq 1 45); do

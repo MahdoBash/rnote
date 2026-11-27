@@ -23,6 +23,18 @@ public final class RnoteApplication extends RuntimeApplication {
         }
     }
 
+    public void printNotebook(android.app.Activity activity, String path, String title) {
+        File pdf = new File(path);
+        activity.runOnUiThread(() -> {
+            if (activity.isFinishing() || activity.isDestroyed()) {
+                pdf.delete();
+                return;
+            }
+            android.print.PrintManager manager = activity.getSystemService(android.print.PrintManager.class);
+            manager.print(title, new NotebookPrintAdapter(pdf, title + ".pdf"), null);
+        });
+    }
+
     @Override
     public void onCreate() {
         // Set up native libraries before GTK starts the Rust application thread.

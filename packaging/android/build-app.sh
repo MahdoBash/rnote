@@ -24,7 +24,7 @@ export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=1 CARGO_PROFILE_DEV
 export CARGO_BUILD_JOBS=2
 java_dir="$project/app/src/main/java/com/github/flxzt/rnote"
 mkdir -p "$java_dir"
-cp packaging/android/RnoteApplication.java "$java_dir/"
+cp packaging/android/{RnoteApplication,NotebookPrintAdapter}.java "$java_dir/"
 activity="$project/app/src/main/java/org/gtk/android/ToplevelActivity.java"
 # Retain only folder-tree grants returned by the system chooser.
 sed -i '/protected void onActivityResult(int requestCode, int resultCode, Intent data) {/a\        if (resultCode == RESULT_OK) com.github.flxzt.rnote.RnoteApplication.persistWorkspaceGrant(this, data);' "$activity"

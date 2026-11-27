@@ -57,6 +57,7 @@ jobs:
           key: ${{ steps.runtime.outputs.cache-primary-key }}
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-on-failure: true
           shared-key: rnote-mobile-${{ matrix.arch }}
       - name: Build Rnote and assemble APK
         run: bash packaging/android/build-app.sh "${{ matrix.arch }}"

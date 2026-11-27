@@ -13,19 +13,19 @@ git -C "$work/pixiewood" checkout --quiet de3719725a8f6e3efe0f28203e803e7ce19049
 pw="$work/pixiewood/pixiewood"
 # Use the enum generator from the target GLib release on the host. Older
 # generators misread G_GNUC_FLAG_ENUM as a type name in Adwaita headers.
-mkdir -p "$work/host-pc" "$work/tools"
+mkdir -p "$work/tools"
 curl -fsSL --retry 3 https://raw.githubusercontent.com/GNOME/glib/2.90.1/gobject/glib-mkenums.in \
   -o "$work/tools/glib-mkenums"
 sed -i "1c #!$(command -v python3)" "$work/tools/glib-mkenums"
 chmod +x "$work/tools/glib-mkenums"
-host_pc=$(pkg-config --variable=pcfiledir glib-2.0)
-sed "s!^glib_mkenums=.*!glib_mkenums=$work/tools/glib-mkenums!" "$host_pc/glib-2.0.pc" > "$work/host-pc/glib-2.0.pc"
-export PKG_CONFIG_PATH="$work/host-pc${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-export PATH="$work/tools:$PATH"
-test "$(pkg-config --variable=glib_mkenums glib-2.0)" = "$work/tools/glib-mkenums"
+# Meson's GNOME module looks up host tools in the cross file before
+# consulting the build-machine GLib's absolute pkg-config tool paths.
+sed -i "/^\[binaries\]/a glib-mkenums = '$work/tools/glib-mkenums'" "$work/pixiewood/prepare/android.cross"
 sed "s/@ARCH@/$arch/g" app.xml.in > rnote.android.xml
 perl "$pw" -v prepare --meson "$(command -v meson)" --sdk "$ANDROID_HOME" \
   --android-studio-dir "$ANDROID_HOME" --toolchain "$ANDROID_NDK_HOME" --release rnote.android.xml
+ninja -C ".pixiewood/bin-$arch" subprojects/libadwaita/src/adw-enums.h
+grep -q ADW_TYPE_TAB_VIEW_SHORTCUTS ".pixiewood/bin-$arch/subprojects/libadwaita/src/adw-enums.h"
 git -C subprojects/gtk apply "$repo/packaging/android/chooser-name.patch"
 perl "$pw" -v generate
 icon_dir=.pixiewood/android/app/src/main/res/drawable-nodpi

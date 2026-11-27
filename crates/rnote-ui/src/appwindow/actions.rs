@@ -920,6 +920,21 @@ impl RnAppWindow {
         ));
 
         // Print doc
+        #[cfg(target_os = "android")]
+        action_print_doc.connect_activate(clone!(#[weak(rename_to=window)] self, move |_, _| {
+            glib::spawn_future_local(clone!(#[weak] window, async move {
+                window.overlays().progressbar_start_pulsing();
+                match crate::android_files::print(&window).await {
+                    Ok(()) => window.overlays().progressbar_finish(),
+                    Err(err) => {
+                        error!("Printing failed: {err}");
+                        window.overlays().progressbar_abort();
+                        window.overlays().dispatch_toast_error(&gettext("Printing document failed"));
+                    }
+                }
+            }));
+        }));
+        #[cfg(not(target_os = "android"))]
         action_print_doc.connect_activate(clone!(
             #[weak(rename_to=appwindow)]
             self,
