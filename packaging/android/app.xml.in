@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<app xmlns="https://sp1rit.arpa/pixiewood/" xmlns:xi="http://www.w3.org/2001/XInclude">
+  <metainfo vercalc="sem121010">
+    <component xmlns="https://specifications.freedesktop.org/metainfo/1.0" type="desktop-application">
+      <id>com.github.flxzt.rnote</id>
+      <metadata_license>CC0-1.0</metadata_license>
+      <project_license>GPL-3.0-or-later</project_license>
+      <name>Rnote</name>
+      <summary>Sketch and take handwritten notes</summary>
+      <provides>
+        <mediatype actions="edit">application/rnote</mediatype>
+        <mediatype>application/pdf</mediatype>
+        <mediatype>image/png</mediatype>
+        <mediatype>image/jpeg</mediatype>
+        <mediatype>image/svg+xml</mediatype>
+        <mediatype>application/x-xopp</mediatype>
+      </provides>
+      <releases><release version="0.15.0"/></releases>
+    </component>
+  </metainfo>
+  <style>
+    <theme name="adw"/>
+    <icon type="generate">
+      <drawable target="foreground" type="avd" path="launcher.xml"/>
+      <color target="background">#ffffff</color>
+    </icon>
+  </style>
+  <dependencies>
+    <glib revision="2.90.1"><patch>hack</patch></glib>
+    <fontconfig/>
+    <gtk revision="4.24.1"/>
+    <libadwaita revision="1.9.0"/>
+  </dependencies>
+  <build target="rnote">
+    <architectures><arch>@ARCH@</arch></architectures>
+    <configure-options>
+      <option>-Dgtk:vulkan=disabled</option>
+      <option>-Dgtk:build-tests=false</option>
+      <option>-Dgtk:build-testsuite=false</option>
+      <option>-Dgtk:build-demos=false</option>
+      <option>-Dcairo:pdf=enabled</option>
+      <option>-Dcairo:ps=enabled</option>
+      <option>-Dcairo:svg=enabled</option>
+    </configure-options>
+  </build>
+</app>

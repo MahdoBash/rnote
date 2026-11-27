@@ -26,6 +26,9 @@ pub(crate) fn lib_dir() -> anyhow::Result<PathBuf> {
 }
 
 pub(crate) fn data_dir() -> anyhow::Result<PathBuf> {
+    if cfg!(target_os = "android") {
+        return gtk4::glib::system_data_dirs().into_iter().next().context("Missing Android data directory");
+    }
     if cfg!(target_os = "windows") {
         let exec_dir = exec_parent_dir()?;
 
@@ -48,6 +51,9 @@ pub(crate) fn pkg_data_dir() -> anyhow::Result<PathBuf> {
 }
 
 pub(crate) fn locale_dir() -> anyhow::Result<PathBuf> {
+    if cfg!(target_os = "android") {
+        return Ok(data_dir()?.join("locale"));
+    }
     if cfg!(target_os = "windows") {
         let exec_dir = exec_parent_dir()?;
 
@@ -66,6 +72,11 @@ pub(crate) fn locale_dir() -> anyhow::Result<PathBuf> {
 }
 
 pub(crate) fn cache_dir() -> anyhow::Result<PathBuf> {
+    if cfg!(target_os = "android") {
+        let dir = gtk4::glib::user_data_dir().join("cache");
+        fs::create_dir_all(&dir)?;
+        return Ok(dir);
+    }
     let cache_dir = match env::var("XDG_CACHE_HOME") {
         Ok(p) => PathBuf::from(p),
         Err(_) => {

@@ -27,6 +27,15 @@ mod imp {
 
     impl Default for RnWorkspaceListEntryInner {
         fn default() -> Self {
+            #[cfg(target_os = "android")]
+            let dir = {
+                let dir = glib::user_data_dir().join("Notebooks");
+                if let Err(e) = std::fs::create_dir_all(&dir) {
+                    tracing::warn!("Could not create notebook workspace: {e}");
+                }
+                dir
+            };
+            #[cfg(not(target_os = "android"))]
             let dir = std::env::home_dir().unwrap_or_else(|| {
                 if cfg!(target_os = "windows") {
                     PathBuf::from("C:\\")

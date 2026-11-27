@@ -52,6 +52,10 @@ mod imp {
         fn startup(&self) {
             let obj = self.obj();
             self.parent_startup();
+            #[cfg(target_os = "android")]
+            if let Some(settings) = gtk4::Settings::default() {
+                settings.set_gtk_decoration_layout(Some(":"));
+            }
 
             #[cfg(target_os = "windows")]
             crate::windows_surfaces::install();

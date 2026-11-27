@@ -1,0 +1,84 @@
+name: Build and test Rnote for Android
+on:
+  push:
+    branches: [codex/android]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    name: Android ${{ matrix.arch }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 160
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, x86_64]
+    env:
+      NDK_VERSION: 28.2.13676358
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Android build prerequisites
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends ninja-build gettext librsvg2-bin adwaita-icon-theme sassc gperf glslc libxml2-utils libglib2.0-dev libglib2.0-dev-bin gir1.2-appstream-1.0 libglib-perl libglib-object-introspection-perl libipc-run-perl libjson-perl libset-scalar-perl libxml-libxml-perl libxml-libxslt-perl nasm python3-venv libmount-dev
+          python3 -m venv "$RUNNER_TEMP/meson"
+          "$RUNNER_TEMP/meson/bin/pip" install 'meson>=1.10,<2' mako packaging
+          echo "$RUNNER_TEMP/meson/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Select Android SDK and NDK
+        run: |
+          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0' "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Install Rust for Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99'
+          targets: ${{ matrix.arch }}-linux-android
+      - uses: actions/cache/restore@v4
+        id: runtime
+        with:
+          path: .android-sdk-${{ matrix.arch }}
+          key: rnote-android-gtk-${{ matrix.arch }}-${{ hashFiles('packaging/android/build-runtime.sh', 'packaging/android/meson.build', 'packaging/android/app.xml.in', 'packaging/android/entry.c', 'packaging/android/launcher.xml', 'crates/rnote-ui/data/icons/scalable/apps/rnote.svg') }}
+      - name: Build the GTK and Adwaita Android runtime
+        if: steps.runtime.outputs.cache-hit != 'true'
+        run: bash packaging/android/build-runtime.sh "${{ matrix.arch }}"
+      - uses: actions/cache/save@v4
+        if: success() && steps.runtime.outputs.cache-hit != 'true'
+        with:
+          path: .android-sdk-${{ matrix.arch }}
+          key: ${{ steps.runtime.outputs.cache-primary-key }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rnote-mobile-${{ matrix.arch }}
+      - name: Build Rnote and assemble APK
+        run: bash packaging/android/build-app.sh "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rnote-Android-${{ matrix.arch }}
+          path: android-dist/*.apk
+          if-no-files-found: error
+      - name: Enable KVM for the emulator
+        if: matrix.arch == 'x86_64'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Exercise the installed Android app
+        if: matrix.arch == 'x86_64'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash packaging/android/check-installed.sh
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.arch == 'x86_64'
+        with:
+          name: Android-emulator-results
+          path: android-test-results
+          if-no-files-found: ignore

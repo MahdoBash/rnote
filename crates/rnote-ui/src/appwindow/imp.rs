@@ -114,6 +114,15 @@ impl ObjectImpl for RnAppWindow {
         self.parent_constructed();
         let obj = self.obj();
         let _windowsettings = obj.settings();
+        #[cfg(target_os = "android")]
+        obj.connect_map(|_| {
+            #[link(name = "log")]
+            unsafe extern "C" {
+                fn __android_log_write(priority: i32, tag: *const std::ffi::c_char, message: *const std::ffi::c_char) -> i32;
+            }
+            // Both static C strings remain valid for the duration of the log call.
+            unsafe { __android_log_write(4, c"Rnote".as_ptr(), c"Notebook window mapped".as_ptr()); }
+        });
 
         if config::PROFILE == "devel" {
             obj.add_css_class("devel");
