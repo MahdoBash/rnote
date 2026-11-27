@@ -23,7 +23,7 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends ninja-build gettext librsvg2-bin adwaita-icon-theme sassc gperf glslc libxml2-utils libglib2.0-dev libglib2.0-dev-bin gir1.2-appstream-1.0 libglib-perl libglib-object-introspection-perl libipc-run-perl libjson-perl libset-scalar-perl libxml-libxml-perl libxml-libxslt-perl nasm python3-venv libmount-dev
           python3 -m venv "$RUNNER_TEMP/meson"
-          "$RUNNER_TEMP/meson/bin/pip" install 'meson>=1.10,<2' mako packaging
+          "$RUNNER_TEMP/meson/bin/pip" install 'meson>=1.10,<2' mako packaging pillow
           echo "$RUNNER_TEMP/meson/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-java@v4
         with:

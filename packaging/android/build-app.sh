@@ -26,6 +26,9 @@ java_dir="$project/app/src/main/java/com/github/flxzt/rnote"
 mkdir -p "$java_dir"
 cp packaging/android/{RnoteApplication,NotebookPrintAdapter,NotebooksProvider}.java "$java_dir/"
 activity="$project/app/src/main/java/org/gtk/android/ToplevelActivity.java"
+# Hardware keyboard events are delivered to the focused Android View. GTK
+# creates this surface after the Activity has already chosen its initial focus.
+sed -i '/this.view.requestLayout();/i\            this.view.toplevel.requestFocus();' "$activity"
 # Retain only folder-tree grants returned by the system chooser.
 sed -i '/protected void onActivityResult(int requestCode, int resultCode, Intent data) {/a\        if (resultCode == RESULT_OK) com.github.flxzt.rnote.RnoteApplication.persistWorkspaceGrant(this, data);' "$activity"
 sed -i 's/android:name="org.gtk.android.RuntimeApplication"/android:name="com.github.flxzt.rnote.RnoteApplication"/' "$project/app/src/main/AndroidManifest.xml"

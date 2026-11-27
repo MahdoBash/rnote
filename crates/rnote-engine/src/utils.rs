@@ -71,15 +71,10 @@ pub fn convert_coord_dpi(coord: Vector2, current_dpi: f64, target_dpi: f64) -> V
 
 #[cfg(feature = "ui")]
 pub fn affine_to_gsk(affine: &DAffine2) -> gtk4::gsk::Transform {
-    let array = affine.to_cols_array_2d();
-    gtk4::gsk::Transform::new().matrix(&gtk4::graphene::Matrix::from_2d(
-        array[0][0],
-        array[0][1],
-        array[1][0],
-        array[1][1],
-        array[2][0],
-        array[2][1],
-    ))
+    // A generic 4×4 matrix is classified as a 3D transform by GSK. Keep
+    // the 2D category so both hardware and Cairo renderers can paint strokes.
+    let [xx, yx, xy, yy, dx, dy] = affine.to_cols_array().map(|value| value as f32);
+    gtk4::gsk::Transform::new().matrix_2d(xx, yx, xy, yy, dx, dy)
 }
 
 /// Convert an [Aabb] to [`geo::Polygon<f64>`]

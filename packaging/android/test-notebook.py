@@ -6,6 +6,7 @@ import subprocess
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from PIL import Image
 
 results = Path("android-test-results")
 package = "com.github.flxzt.rnote"
@@ -64,7 +65,15 @@ def read_notebook(remote, count):
 
 
 stroke(650)
-key("KEYCODE_CTRL_LEFT", "KEYCODE_S")
+ink_screen = results / "first-stroke.png"
+ink_screen.write_bytes(adb("exec-out", "screencap", "-p", binary=True))
+with Image.open(ink_screen) as image:
+    pixels = list(image.convert("RGB").crop((410, 640, 875, 755)).getdata())
+    assert (255, 105, 180) not in pixels, "The renderer displayed its unsupported-transform placeholder"
+    assert sum(max(rgb) < 120 for rgb in pixels) > 30, "The black brush stroke was not visible"
+# The tablet header's Save button. Exercise the normal touch path, then use
+# hardware keyboard shortcuts to reopen and save after the restart.
+adb("shell", "input", "tap", "1147", "64")
 field = picker_node(lambda n: n["class"] == "android.widget.EditText")
 tap(field)
 key("KEYCODE_CTRL_LEFT", "KEYCODE_A")
