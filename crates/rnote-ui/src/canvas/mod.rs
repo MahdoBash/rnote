@@ -35,6 +35,25 @@ use std::time::Duration;
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
+fn brush_cursor(name: &str) -> gdk::Cursor {
+    let fallback = gdk::Cursor::from_name("default", None);
+    #[cfg(target_os = "android")]
+    let texture = env::pkg_data_dir().ok().and_then(|dir| {
+        let file = gio::File::for_path(dir.join("cursors").join(format!("{name}.png")));
+        gdk::Texture::from_file(&file).ok()
+    });
+    #[cfg(not(target_os = "android"))]
+    let texture = {
+        let path = format!("{}icons/scalable/actions/{name}.svg", config::APP_IDPATH);
+        gio::resources_lookup_data(&path, gio::ResourceLookupFlags::NONE).ok()
+            .and_then(|bytes| gdk::Texture::from_bytes(&bytes).ok())
+    };
+    match texture {
+        Some(texture) => gdk::Cursor::from_texture(&texture, 32, 32, fallback.as_ref()),
+        None => fallback.unwrap_or_else(|| gdk::Cursor::builder().name("default").build()),
+    }
+}
+
 #[derive(Debug, Default)]
 struct Connections {
     hadjustment: Option<glib::SignalHandlerId>,
@@ -123,38 +142,10 @@ mod imp {
             drop_target.set_types(&[gio::File::static_type(), glib::types::Type::STRING]);
 
             let regular_cursor_icon_name = String::from("cursor-dot-medium");
-            let regular_cursor = gdk::Cursor::from_texture(
-                &gdk::Texture::from_resource(
-                    (String::from(config::APP_IDPATH)
-                        + "icons/scalable/actions/cursor-dot-medium.svg")
-                        .as_str(),
-                ),
-                32,
-                32,
-                gdk::Cursor::from_name("default", None).as_ref(),
-            );
+            let regular_cursor = brush_cursor(&regular_cursor_icon_name);
             let drawing_cursor_icon_name = String::from("cursor-dot-small");
-            let drawing_cursor = gdk::Cursor::from_texture(
-                &gdk::Texture::from_resource(
-                    (String::from(config::APP_IDPATH)
-                        + "icons/scalable/actions/cursor-dot-small.svg")
-                        .as_str(),
-                ),
-                32,
-                32,
-                gdk::Cursor::from_name("default", None).as_ref(),
-            );
-
-            let invisible_cursor = gdk::Cursor::from_texture(
-                &gdk::Texture::from_resource(
-                    (String::from(config::APP_IDPATH)
-                        + "icons/scalable/actions/cursor-invisible.svg")
-                        .as_str(),
-                ),
-                32,
-                32,
-                gdk::Cursor::from_name("default", None).as_ref(),
-            );
+            let drawing_cursor = brush_cursor(&drawing_cursor_icon_name);
+            let invisible_cursor = brush_cursor("cursor-invisible");
 
             let engine = Engine::default();
 
@@ -417,20 +408,7 @@ mod imp {
                     let icon_name = value.get().unwrap();
                     self.regular_cursor_icon_name.replace(icon_name);
 
-                    let cursor = gdk::Cursor::from_texture(
-                        &gdk::Texture::from_resource(
-                            (String::from(config::APP_IDPATH)
-                                + &format!(
-                                    "icons/scalable/actions/{}.svg",
-                                    self.regular_cursor_icon_name.borrow()
-                                ))
-                                .as_str(),
-                        ),
-                        32,
-                        32,
-                        gdk::Cursor::from_name("default", None).as_ref(),
-                    );
-
+                    let cursor = brush_cursor(&self.regular_cursor_icon_name.borrow());
                     self.regular_cursor.replace(cursor);
 
                     obj.set_cursor(Some(&*self.regular_cursor.borrow()));
@@ -439,20 +417,7 @@ mod imp {
                     let icon_name = value.get().unwrap();
                     self.drawing_cursor_icon_name.replace(icon_name);
 
-                    let cursor = gdk::Cursor::from_texture(
-                        &gdk::Texture::from_resource(
-                            (String::from(config::APP_IDPATH)
-                                + &format!(
-                                    "icons/scalable/actions/{}.svg",
-                                    self.drawing_cursor_icon_name.borrow()
-                                ))
-                                .as_str(),
-                        ),
-                        32,
-                        32,
-                        gdk::Cursor::from_name("default", None).as_ref(),
-                    );
-
+                    let cursor = brush_cursor(&self.drawing_cursor_icon_name.borrow());
                     self.drawing_cursor.replace(cursor);
                 }
                 _ => unimplemented!(),

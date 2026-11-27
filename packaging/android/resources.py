@@ -57,6 +57,13 @@ for license_file in (engine / "sounds").rglob("LICENSE*"):
 
 shutil.copy2("packaging/android/fonts.conf", assets / "rnote/fonts.conf")
 
+# Cursor textures use GDK's bitmap decoder. Preserve the original 64 px
+# artwork and pointer hotspot when bundling them for the Android backend.
+cursors = assets / "rnote/cursors"
+cursors.mkdir(parents=True, exist_ok=True)
+for icon in sorted((ui / "data/icons/scalable/actions").glob("cursor-*.svg")):
+    subprocess.run(["rsvg-convert", "-o", cursors / (icon.stem + ".png"), icon], check=True)
+
 # GTK's bundled icons only cover its own controls. Include the themed
 # symbolic icons the Rnote toolbars reference, with their original index.
 theme = Path("/usr/share/icons/Adwaita")
